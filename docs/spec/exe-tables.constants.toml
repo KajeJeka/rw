@@ -1,0 +1,1136 @@
+# Executable layer constants for `falloutw.exe`.
+#
+# Companion to docs/spec/exe-tables.md. Every number here was read from the
+# bytes of the reference build at
+#   _rw_private/analysis/target/falloutw.exe
+# SHA-256 444257e5fe91e6c333261aecadacb1f46dbba0319fa0b187de89f36914f32272
+# No Community Edition artefact was consulted, so no row below carries the tag
+# "CONFIRMED IN COMMUNITY EDITION ONLY".
+#
+# These constants are TRUE FOR ONE EXACT BUILD ONLY. The digest is checked
+# first; any other build stops with a clear message and never relaxes a value.
+#
+# The tables are read from the player's own executable at run time, or cached
+# under target/. No table value is committed to this repository; the rows here
+# record the shape and the oracle values that the readers must reproduce, not a
+# copy of the data.
+
+# ---------------------------------------------------------------------------
+# Build gate
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C001"
+value = 1145198565
+unit = "sha256-word-0"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-001"
+note = "Bits 0 to 31 of the reference build SHA-256, 0x444257e5, the first four bytes of the digest. Use C003 and C004 together to pin all 32 bytes; this row and C002 split the high word so a partial check can fail fast."
+
+[[constant]]
+id = "EXETBL-C002"
+value = 4270974659
+unit = "sha256-word-1"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-001"
+note = "Bits 32 to 63 of the same digest, 0xfe91e6c3."
+
+[[constant]]
+id = "EXETBL-C003"
+value = 4918590388372104899
+unit = "sha256-high-64"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-001"
+note = "High 64 bits of 444257e5fe91e6c333261aecadacb1f46dbba0319fa0b187de89f36914f32272."
+
+[[constant]]
+id = "EXETBL-C004"
+value = 3685662948877709812
+unit = "sha256-low-64"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-001"
+note = "Low 64 bits of the same digest. C003 and C004 together pin all 32 bytes. Checked before any header parse and before any constant is used."
+
+[[constant]]
+id = "EXETBL-C005"
+value = 1243136
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-001"
+note = "File size of the reference build. The digest gate covers the whole file, so a truncated or appended file fails the gate."
+
+# ---------------------------------------------------------------------------
+# PE header facts
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C010"
+value = 4194304
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "ImageBase 0x00400000, read from the PE32 optional header at offset 28."
+
+[[constant]]
+id = "EXETBL-C011"
+value = 128
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "e_lfanew at file offset 0x3C; PE signature sits there."
+
+[[constant]]
+id = "EXETBL-C012"
+value = 376
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section header table at file offset 0x178, derived from e_lfanew + 24 + SizeOfOptionalHeader(224)."
+
+[[constant]]
+id = "EXETBL-C013"
+value = 6
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "NumberOfSections."
+
+[[constant]]
+id = "EXETBL-C014"
+value = 0
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "VirtualSize is 0 in every one of the 6 sections. Containment must therefore be tested against SizeOfRawData; a reader that validates against VirtualSize rejects every address in this build."
+
+[[constant]]
+id = "EXETBL-C015"
+value = 1024
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "SizeOfHeaders 0x400, so the section table at 0x178 is inside the headers and the first section's raw data starts at 0x400. A separate, unrelated constant is 40, the size of one IMAGE_SECTION_HEADER, which the reader strides by."
+
+# BEGTEXT: VA 0x00010000, VS 0, RawPtr 0x00000400, RawSize 0x000D0A00
+[[constant]]
+id = "EXETBL-C020"
+value = 65536
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section BEGTEXT VirtualAddress 0x00010000."
+
+[[constant]]
+id = "EXETBL-C021"
+value = 1024
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section BEGTEXT PointerToRawData 0x00000400."
+
+[[constant]]
+id = "EXETBL-C022"
+value = 854528
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section BEGTEXT SizeOfRawData 0x000D0A00."
+
+# DGROUP: VA 0x000F0000, VS 0, RawPtr 0x000D0E00, RawSize 0x0004CC00
+[[constant]]
+id = "EXETBL-C023"
+value = 983040
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section DGROUP VirtualAddress 0x000F0000. All seven tables live in this section."
+
+[[constant]]
+id = "EXETBL-C024"
+value = 855552
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section DGROUP PointerToRawData 0x000D0E00."
+
+[[constant]]
+id = "EXETBL-C025"
+value = 314368
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section DGROUP SizeOfRawData 0x0004CC00. Raw data ends at file offset 0x11DA00; the highest byte any table reaches is 0xE9124."
+
+# .bss: VA 0x00140000, VS 0, RawPtr 0x00000000, RawSize 0x00172C00
+[[constant]]
+id = "EXETBL-C026"
+value = 1310720
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section .bss VirtualAddress 0x00140000, PointerToRawData 0. It contributes no file bytes and must be skipped rather than mapped to offset 0."
+
+# .idata / .reloc / .rsrc
+[[constant]]
+id = "EXETBL-C027"
+value = 2883584
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section .idata VirtualAddress 0x002C0000."
+
+[[constant]]
+id = "EXETBL-C028"
+value = 2949120
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section .reloc VirtualAddress 0x002D0000."
+
+[[constant]]
+id = "EXETBL-C029"
+value = 3014656
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section .rsrc VirtualAddress 0x002E0000."
+
+# ---------------------------------------------------------------------------
+# The seven table addresses
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C100"
+value = 5237904
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty at 0x4FEC90."
+
+[[constant]]
+id = "EXETBL-C101"
+value = 5237940
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Critical success, critters at 0x4FECB4."
+
+[[constant]]
+id = "EXETBL-C102"
+value = 5260620
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-005"
+note = "Critical success, player at 0x50454C. See EXETBL-010 for why the critter table ends exactly here."
+
+[[constant]]
+id = "EXETBL-C103"
+value = 5262140
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-006"
+note = "Critical failure at 0x504B3C. The guide's table is used as ground truth."
+
+[[constant]]
+id = "EXETBL-C104"
+value = 5275336
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Stat limits at 0x507EC8."
+
+[[constant]]
+id = "EXETBL-C105"
+value = 5276248
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "Player stat limits at 0x508258."
+
+[[constant]]
+id = "EXETBL-C106"
+value = 5276368
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-009"
+note = "XP thresholds at 0x5082D0."
+
+[[constant]]
+id = "EXETBL-C107"
+value = 5275348
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Minimum of the first stat limits record at 0x507ED4. Equals 0x507EC8 + 12, which is field 3 of a 24-byte record. Its little endian value is 1, confirming field 3 as the minimum and the 24-byte stride."
+
+# ---------------------------------------------------------------------------
+# Derived addresses the readers compute, recorded for cross-checking
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C108"
+value = 5275732
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-014"
+note = "Minimum field of stat limits record 16, at 0x507EC8 + 16*24 + 12 = 0x508054. Anti deviation target: the value read here must be 0."
+
+[[constant]]
+id = "EXETBL-C109"
+value = 5275720
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Stat limits record 16 base address, 0x507EC8 + 16*24 = 0x508048."
+
+[[constant]]
+id = "EXETBL-C110"
+value = 5276372
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-013"
+note = "XP thresholds element 1 (level 1) at 0x5082D0 + 4 = 0x5082D4. The table is indexed by level, so element 0 is level 0."
+
+# ---------------------------------------------------------------------------
+# File offsets computed from the section table
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C200"
+value = 916112
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty at file offset 0x000DFA90, from DGROUP raw 0xD0E00 + (0x4FEC90 - 0x400000 - 0xF0000)."
+
+[[constant]]
+id = "EXETBL-C201"
+value = 916148
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Critical success, critters at file offset 0x000DFAB4. It begins exactly one byte after the hit location penalty ends."
+
+[[constant]]
+id = "EXETBL-C202"
+value = 938828
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-005"
+note = "Critical success, player at file offset 0x000E534C. Equals 0xDFAB4 + 22680, an independent confirmation of the critter table's extent in the file domain."
+
+[[constant]]
+id = "EXETBL-C203"
+value = 940348
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-006"
+note = "Critical failure at file offset 0x000E593C. The player critical table ends at 0xE5933, leaving 8 bytes of padding, which is why this pair is not stated as an adjacency identity."
+
+[[constant]]
+id = "EXETBL-C204"
+value = 953544
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Stat limits at file offset 0x000E8CC8."
+
+[[constant]]
+id = "EXETBL-C205"
+value = 954456
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "Player stat limits at file offset 0x000E9058. Equals 0xE8CC8 + 912."
+
+[[constant]]
+id = "EXETBL-C206"
+value = 954576
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-009"
+note = "XP thresholds at file offset 0x000E90D0. Equals 0xE9058 + 120."
+
+[[constant]]
+id = "EXETBL-C207"
+value = 954580
+unit = "file-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-013"
+note = "XP thresholds element 1 at file offset 0x000E90D4. The four bytes there are 01 00 00 00."
+
+# ---------------------------------------------------------------------------
+# Record sizes and field counts
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C300"
+value = 28
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Critical record size, 7 little endian i32. Confirmed by the 22680-byte critter table ending exactly where the player table starts."
+
+[[constant]]
+id = "EXETBL-C301"
+value = 24
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Stat limit record size, 6 little endian i32. Confirmed by 38 * 24 = 912 ending exactly where the player limits begin."
+
+[[constant]]
+id = "EXETBL-C302"
+value = 24
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "Player stat limit record size, same layout as C301. Confirmed by 5 * 24 = 120 ending exactly where the XP table begins."
+
+[[constant]]
+id = "EXETBL-C303"
+value = 4
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-009"
+note = "Size of one i32. Every field in the executable layer is a little endian i32 of this size."
+
+[[constant]]
+id = "EXETBL-C304"
+value = 7
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Fields in a critical record: multiplier, effect flags, massive critical stat, its modifier, massive critical flags, message id 1, message id 2."
+
+[[constant]]
+id = "EXETBL-C305"
+value = 6
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Fields in a stat limit record. Fields 3, 4 and 5 are minimum, maximum and default. Field 0 is zero in all 38 records, so it is not the stat index; see EXETBL-016."
+
+[[constant]]
+id = "EXETBL-C306"
+value = 12
+unit = "byte-offset"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Byte offset of the minimum field inside a stat limit record. 0x507EC8 + 12 = 0x507ED4, the guide's stated first minimum."
+
+[[constant]]
+id = "EXETBL-C307"
+value = -1
+unit = "sentinel"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-005"
+note = "Value of massive_critical_stat in a critical record with no massive critical, observed in the first record of both critical tables. Must not be used as an index without a check."
+
+# ---------------------------------------------------------------------------
+# Table shapes and counts
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C400"
+value = 9
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty i32 count. 9 * 4 = 36 bytes, ending one byte before the critter table starts."
+
+[[constant]]
+id = "EXETBL-C401"
+value = 15
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Leading nesting dimension of the critter critical table. Not identified as a body part, attacker class or weapon class."
+
+[[constant]]
+id = "EXETBL-C402"
+value = 9
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Middle nesting dimension of the critter critical table."
+
+[[constant]]
+id = "EXETBL-C403"
+value = 6
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Trailing nesting dimension of the critter critical table."
+
+[[constant]]
+id = "EXETBL-C404"
+value = 810
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Critter critical record count, 15 * 9 * 6. The reader flattens to this many records and preserves index order."
+
+[[constant]]
+id = "EXETBL-C405"
+value = 9
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-005"
+note = "Leading nesting dimension of the player critical table."
+
+[[constant]]
+id = "EXETBL-C406"
+value = 6
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-005"
+note = "Trailing nesting dimension of the player critical table."
+
+[[constant]]
+id = "EXETBL-C407"
+value = 54
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-005"
+note = "Player critical record count, 9 * 6. Flattened, preserving index order."
+
+[[constant]]
+id = "EXETBL-C408"
+value = 7
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-006"
+note = "Critical failure row count. 7 * 5 = 35 i32 = 140 bytes."
+
+[[constant]]
+id = "EXETBL-C409"
+value = 5
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-006"
+note = "Critical failure column count. The values read are large power-of-two combinations; what the columns mean is not established."
+
+[[constant]]
+id = "EXETBL-C410"
+value = 35
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-006"
+note = "Critical failure i32 count."
+
+[[constant]]
+id = "EXETBL-C411"
+value = 38
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Stat limits record count. Addressing a limit is by record index only."
+
+[[constant]]
+id = "EXETBL-C412"
+value = 5
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "Player stat limits record count: unspent skill points, level, experience, reputation, karma."
+
+[[constant]]
+id = "EXETBL-C413"
+value = 21
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-009"
+note = "XP threshold i32 count, levels 0 through 20."
+
+# ---------------------------------------------------------------------------
+# Byte extents of each table
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C500"
+value = 36
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty extent, 9 * 4."
+
+[[constant]]
+id = "EXETBL-C501"
+value = 22680
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Critter critical table extent, 15 * 9 * 6 * 28. Doubles as the first adjacency sum; see EXETBL-C601."
+
+[[constant]]
+id = "EXETBL-C502"
+value = 1512
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-005"
+note = "Player critical table extent, 9 * 6 * 28."
+
+[[constant]]
+id = "EXETBL-C503"
+value = 140
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-006"
+note = "Critical failure extent, 7 * 5 * 4."
+
+[[constant]]
+id = "EXETBL-C504"
+value = 912
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Stat limits extent, 38 * 24. Doubles as the second adjacency sum; see EXETBL-C602."
+
+[[constant]]
+id = "EXETBL-C505"
+value = 120
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "Player stat limits extent, 5 * 24. Doubles as the third adjacency sum; see EXETBL-C603."
+
+[[constant]]
+id = "EXETBL-C506"
+value = 84
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-009"
+note = "XP thresholds extent, 21 * 4."
+
+# ---------------------------------------------------------------------------
+# The three adjacency identities, class 1 oracles
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C600"
+value = 810
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-010"
+note = "Critter critical record count 15 * 9 * 6, re-stated because the first oracle depends on it."
+
+[[constant]]
+id = "EXETBL-C601"
+value = 22680
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-010"
+note = "Oracle: assert_eq!(0x4FECB4 + 22680, 0x50454C). Arithmetic checked: 15*9*6*28 = 22680 = 0x5898, and 0x4FECB4 + 0x5898 = 0x50454C. Confirmed again in the file domain: 0xDFAB4 + 22680 = 0xE534C, the player table's own file offset."
+
+[[constant]]
+id = "EXETBL-C602"
+value = 912
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-011"
+note = "Oracle: assert_eq!(0x507EC8 + 912, 0x508258). Arithmetic checked: 38*24 = 912 = 0x390, and 0x507EC8 + 0x390 = 0x508258. Confirmed in the file domain: 0xE8CC8 + 912 = 0xE9058."
+
+[[constant]]
+id = "EXETBL-C603"
+value = 120
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-012"
+note = "Oracle: assert_eq!(0x508258 + 120, 0x5082D0). Arithmetic checked: 5*24 = 120 = 0x78, and 0x508258 + 0x78 = 0x5082D0. Confirmed in the file domain: 0xE9058 + 120 = 0xE90D0."
+
+[[constant]]
+id = "EXETBL-C604"
+value = 5237940
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-010"
+note = "Left hand side of the first oracle, 0x4FECB4 + 22680. Pinned so a test can assert the sum rather than hard code a single address."
+
+[[constant]]
+id = "EXETBL-C605"
+value = 5260620
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-010"
+note = "Right hand side of the first oracle, 0x50454C. Equal to C604 + 22680 and to the player critical table address in C102."
+
+[[constant]]
+id = "EXETBL-C606"
+value = 5276248
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-011"
+note = "Left hand side of the second oracle, 0x507EC8 + 912. Equal to C607 - 120 and to the player stat limits address in C105."
+
+[[constant]]
+id = "EXETBL-C607"
+value = 5276368
+unit = "address"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-012"
+note = "Right hand side of the third oracle, 0x5082D0. Equal to C606 + 120 and to the XP thresholds address in C106."
+
+# ---------------------------------------------------------------------------
+# Anti deviation values
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C700"
+value = 1
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-013"
+note = "Anti deviation target: the XP threshold for level 1 is 1. Read little endian from the four bytes 01 00 00 00 at file offset 0xE90D4 (address 0x5082D4, element 1)."
+
+[[constant]]
+id = "EXETBL-C701"
+value = 16777216
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-013"
+note = "The wrong value a big endian read produces from the same four bytes, 0x01000000. This is the Community Edition style failure the anti deviation test exists to catch."
+
+[[constant]]
+id = "EXETBL-C702"
+value = 0
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-013"
+note = "XP threshold for level 0, element 0 of the table, from the four bytes 00 00 00 00 at file offset 0xE90D0. Its presence as the first element is what proves the array index is the level."
+
+[[constant]]
+id = "EXETBL-C703"
+value = 0
+unit = "stat-minimum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-014"
+note = "Anti deviation target: the minimum of stat 16 (better criticals) read from the executable is 0, not -60. Read from the four bytes 00 00 00 00 at file offset 0xE8E54 (address 0x508054, stat limits record 16 field 3)."
+
+[[constant]]
+id = "EXETBL-C704"
+value = -60
+unit = "stat-minimum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-014"
+note = "The value a Community Edition style read produces. Not present at 0x508054 in the reference build. -60 does occur in this build, as hit location penalty index 6, so a test must read the address rather than search for a value."
+
+[[constant]]
+id = "EXETBL-C705"
+value = 1
+unit = "stat-minimum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Minimum of stat limits record 0, from the four bytes 01 00 00 00 at file offset 0xE8CD4 (address 0x507ED4). Confirms field 3 is the minimum and the stride is 24."
+
+# ---------------------------------------------------------------------------
+# XP closed form
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C800"
+value = 0
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[0] = 0*1/2 = 0, level 0."
+
+[[constant]]
+id = "EXETBL-C801"
+value = 1
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[1] = 1*2/2 = 1, level 1."
+
+[[constant]]
+id = "EXETBL-C802"
+value = 3
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[2] = 2*3/2 = 3, level 2."
+
+[[constant]]
+id = "EXETBL-C803"
+value = 6
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[3] = 3*4/2 = 6, level 3."
+
+[[constant]]
+id = "EXETBL-C804"
+value = 10
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[4] = 4*5/2 = 10, level 4."
+
+[[constant]]
+id = "EXETBL-C805"
+value = 15
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[5] = 5*6/2 = 15, level 5."
+
+[[constant]]
+id = "EXETBL-C806"
+value = 21
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[6] = 6*7/2 = 21, level 6."
+
+[[constant]]
+id = "EXETBL-C807"
+value = 28
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[7] = 7*8/2 = 28, level 7."
+
+[[constant]]
+id = "EXETBL-C808"
+value = 36
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[8] = 8*9/2 = 36, level 8."
+
+[[constant]]
+id = "EXETBL-C809"
+value = 45
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[9] = 9*10/2 = 45, level 9."
+
+[[constant]]
+id = "EXETBL-C810"
+value = 55
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[10] = 10*11/2 = 55, level 10."
+
+[[constant]]
+id = "EXETBL-C811"
+value = 66
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[11] = 11*12/2 = 66, level 11."
+
+[[constant]]
+id = "EXETBL-C812"
+value = 78
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[12] = 12*13/2 = 78, level 12."
+
+[[constant]]
+id = "EXETBL-C813"
+value = 91
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[13] = 13*14/2 = 91, level 13."
+
+[[constant]]
+id = "EXETBL-C814"
+value = 105
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[14] = 14*15/2 = 105, level 14."
+
+[[constant]]
+id = "EXETBL-C815"
+value = 120
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[15] = 15*16/2 = 120, level 15."
+
+[[constant]]
+id = "EXETBL-C816"
+value = 136
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[16] = 16*17/2 = 136, level 16."
+
+[[constant]]
+id = "EXETBL-C817"
+value = 153
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[17] = 17*18/2 = 153, level 17."
+
+[[constant]]
+id = "EXETBL-C818"
+value = 171
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[18] = 18*19/2 = 171, level 18."
+
+[[constant]]
+id = "EXETBL-C819"
+value = 190
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[19] = 19*20/2 = 190, level 19."
+
+[[constant]]
+id = "EXETBL-C820"
+value = 210
+unit = "experience"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-015"
+note = "xp_thresholds()[20] = 20*21/2 = 210, level 20. The largest value in the table."
+
+[[constant]]
+id = "EXETBL-C821"
+value = 1000
+unit = "scale"
+evidence = "UNVERIFIED"
+claim = "EXETBL-009"
+note = "The caller multiplies each threshold by 1,000. The binary holds unscaled triangular numbers; the largest is exactly 210 = 20*21/2. Who multiplies, and whether the multiplication happens before or after the level comparison, is not established by the bytes. Use checked_mul, since the scaled value overflows i32 at a high enough level."
+
+[[constant]]
+id = "EXETBL-C822"
+value = 2147483647
+unit = "stat-maximum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "i32::MAX, read as the maximum of player stat limits records 0, 1, 2 and 4. An unbounded maximum written as the largest positive i32. It is a value in the player's executable, not a crate limit."
+
+[[constant]]
+id = "EXETBL-C823"
+value = 100
+unit = "stat-maximum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Maximum of stat limits record 16 (better criticals), read as 0x00000064. Part of the record whose minimum is the anti deviation value in C703."
+
+[[constant]]
+id = "EXETBL-C824"
+value = 94
+unit = "stat-field2"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-017"
+note = "Value of stat limits record 16 field 2, read as 0x0000005E. Field 2 is the only varying field in the table but is neither unique nor monotonic, so it is not established as a stat index. UNVERIFIED meaning; recorded so a reader can recognise the record."
+
+# ---------------------------------------------------------------------------
+# Hit location penalties, read from file offset 0xDFA90
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C900"
+value = -40
+unit = "hit-location-penalty"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty index 0, from bytes d8 ff ff ff at file offset 0xDFA90."
+
+[[constant]]
+id = "EXETBL-C901"
+value = -30
+unit = "hit-location-penalty"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty index 1, from bytes e2 ff ff ff at file offset 0xDFA94."
+
+[[constant]]
+id = "EXETBL-C902"
+value = -30
+unit = "hit-location-penalty"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty index 2, from bytes e2 ff ff ff at file offset 0xDFA98. Equal to index 1, so penalties are not distinct across all nine locations."
+
+[[constant]]
+id = "EXETBL-C903"
+value = 0
+unit = "hit-location-penalty"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty index 3, from bytes 00 00 00 00 at file offset 0xDFA9C."
+
+[[constant]]
+id = "EXETBL-C904"
+value = -20
+unit = "hit-location-penalty"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty index 4, from bytes ec ff ff ff at file offset 0xDFAA0."
+
+[[constant]]
+id = "EXETBL-C905"
+value = -20
+unit = "hit-location-penalty"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty index 5, from bytes ec ff ff ff at file offset 0xDFAA4. Equal to index 4."
+
+[[constant]]
+id = "EXETBL-C906"
+value = -60
+unit = "hit-location-penalty"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty index 6, from bytes c4 ff ff ff at file offset 0xDFAA8. This is the same numeric value the guide names as the Community Edition stat 16 minimum, but at a different address and a different table. See C704."
+
+[[constant]]
+id = "EXETBL-C907"
+value = -30
+unit = "hit-location-penalty"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty index 7, from bytes e2 ff ff ff at file offset 0xDFAAC. Equal to indexes 1 and 2."
+
+[[constant]]
+id = "EXETBL-C908"
+value = 0
+unit = "hit-location-penalty"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-003"
+note = "Hit location penalty index 8, from bytes 00 00 00 00 at file offset 0xDFAB0. The table's last four bytes sit immediately before the critter critical table."
+
+# ---------------------------------------------------------------------------
+# Player stat limits, read from file offset 0xE9058
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C910"
+value = 0
+unit = "stat-minimum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "Player stat limits record 0 minimum, unspent skill points."
+
+[[constant]]
+id = "EXETBL-C911"
+value = 1
+unit = "stat-minimum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "Player stat limits record 1 minimum, level. The floor is 1, so a character cannot begin at level 0 even though the XP table has a level 0 entry."
+
+[[constant]]
+id = "EXETBL-C912"
+value = 1
+unit = "stat-default"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "Player stat limits record 1 default, level. Default equals the minimum, so a new character starts at level 1 rather than 0."
+
+[[constant]]
+id = "EXETBL-C913"
+value = -20
+unit = "stat-minimum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "Player stat limits record 3 minimum, reputation per the guide's ordering. The signed -20..20 range is consistent with that label but the binary carries no label."
+
+[[constant]]
+id = "EXETBL-C914"
+value = 20
+unit = "stat-maximum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-008"
+note = "Player stat limits record 3 maximum. The only player stat limit whose maximum is small; the other four are unbounded."
+
+# ---------------------------------------------------------------------------
+# Stat limits, first seven records, read from file offset 0xE8CC8
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C920"
+value = 10
+unit = "stat-maximum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Maximum of stat limits records 0 through 6, the seven core attributes."
+
+[[constant]]
+id = "EXETBL-C921"
+value = 5
+unit = "stat-default"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Default of stat limits records 0 through 6, the seven core attributes. Midpoint of the 1..10 range."
+
+[[constant]]
+id = "EXETBL-C922"
+value = 1
+unit = "stat-minimum"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Minimum of stat limits records 0 through 6, the seven core attributes. Equal to C705, the first record's minimum."
+
+[[constant]]
+id = "EXETBL-C923"
+value = 6
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-007"
+note = "Exactly seven records carry min 1, max 10, default 5 with field 2 running 0..6. That is the seven core attributes, and it is why field 2 looks index-like in the first seven rows without being an index overall."
+
+[[constant]]
+id = "EXETBL-C924"
+value = 0
+unit = "stat-field0"
+evidence = "VERSION DIFFERENCE IDENTIFIED"
+claim = "EXETBL-016"
+note = "Stat limits field 0 is 0 in all 38 records, and field 1 is 0 in all 38 records, verified by reading every record. The guide says field 0 looks like the stat index; it cannot index anything if it is always zero. The reader exposes both under their neutral names and addresses a limit by record index only."
+
+[[constant]]
+id = "EXETBL-C925"
+value = 38
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-016"
+note = "Records scanned to establish that field 0 and field 1 are zero throughout. The scan covers the whole stat limits table from file offset 0xE8CC8 to 0xE9057."
+
+# ---------------------------------------------------------------------------
+# Critical record message id ranges
+# ---------------------------------------------------------------------------
+
+[[constant]]
+id = "EXETBL-C930"
+value = 5000
+unit = "message-id"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Critter critical record 0 message id 2, read from bytes 88 13 00 00 at file offset 0xDFACC. Also the message id 2 of player critical record 0. These ids sit near 5000 and 6500; the mapping to text is not established."
+
+[[constant]]
+id = "EXETBL-C931"
+value = 6500
+unit = "message-id"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-005"
+note = "Player critical record 0 message id 1, read from bytes 64 19 00 00 at file offset 0xE5360, which is record base 0xE534C plus 20. Independent confirmation that message ids are little endian: big endian would give 1661012."
+
+[[constant]]
+id = "EXETBL-C932"
+value = 6513
+unit = "message-id"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-005"
+note = "Highest message id observed, in player critical record 53 message id 2 at file offset 0xE5918 + 24 = 0xE5930. Record 53 is the last of the 54, so the player table ends at 0xE5933 and the critical failure table starts 8 bytes later at 0xE593C. No string table for these ids was in scope."
+
+[[constant]]
+id = "EXETBL-C933"
+value = 6402
+unit = "message-id"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-004"
+note = "Critter critical record 809 message id 1, the last of the 810 records, read from file offset 0xE5330 + 20 = 0xE5344. Its existence confirms the critter table occupies exactly 22680 bytes and stops one byte short of the player table at 0xE534C."

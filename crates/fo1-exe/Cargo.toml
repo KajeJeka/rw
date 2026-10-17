@@ -5,9 +5,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish = false
+license = "LicenseRef-Proprietary"
 
 [lints]
 workspace = true
 
 [dependencies]
-fo1-endian-host.workspace = true
+fo1-endian-host = { path = "../fo1-endian-host" }

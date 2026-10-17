@@ -15,3 +15,4 @@
 1  fo1-dat
 1  fo1-exe
 9  fo1-tests
+9  rw-gate

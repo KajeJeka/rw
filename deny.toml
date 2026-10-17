@@ -16,16 +16,25 @@ allow = [
     "Unicode-3.0",
     "Unlicense",
     "MPL-2.0",
+    # The workspace's own seven crates. Every manifest declares
+    # LicenseRef-Proprietary because SPDX has no identifier for "this project
+    # has not chosen a licence yet", which is the honest state. See LICENSE.
+    "LicenseRef-Proprietary",
 ]
 confidence-threshold = 0.9
 
 [bans]
 multiple-versions = "deny"
 wildcards = "deny"
+# Every dependency in this workspace is a path dependency to a sibling crate
+# with no version key, which cargo-deny reports as a wildcard. That is the
+# expected shape for a workspace of local crates, not a finding. Removing it
+# would mean either inventing fake versions or deleting the wildcard ban,
+# which is the check that actually catches a loose dependency spec.
+allow-wildcard-paths = true
 highlight = "all"
 
 [advisories]
-version = 2
 yanked = "deny"
 
 [sources]

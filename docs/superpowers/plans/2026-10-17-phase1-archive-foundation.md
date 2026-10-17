@@ -87,6 +87,62 @@ crates"; every Phase 1 runtime crate is a data crate.
 the test, where `clippy.toml` permits it. That keeps the harness fully lint-clean
 while still failing loudly when `FO1_DATA` is unset.
 
+**Ruling.** No `[workspace.dependencies]` table. Every path dependency names its
+path directly. cargo-deny 0.20.2 reports
+`bug[unresolved-workspace-dependency]` for a workspace-inherited path
+dependency and `error[wildcard]` for `[dependencies] foo.workspace = true`; both
+are tool limitations, and six path dependencies spelled out is less code than six
+workarounds in `deny.toml`.
+
+**Ruling.** Every manifest declares `license = "LicenseRef-Proprietary"` and
+`deny.toml` allows it. SPDX has no identifier for "no licence chosen yet", which
+is the honest state; `LICENSE` says so in words. `publish = false` means cargo
+never needed the field, but `cargo deny` does, and declaring a licence nobody has
+chosen would be worse than an honest reference.
+
+---
+
+## Wave 1 Adjudication (orchestrator ruling, cross-checked)
+
+Six agents reported COMPLETE. The orchestrator re-ran every check and adjudicated
+the following. Each ruling is cross-checked by at least two independent agents
+unless noted.
+
+| # | Ruling | Evidence |
+| --- | --- | --- |
+| A1 | A DAT block header's field 0 is the **entry count**, not the directory count. The guide never says this and it is load-bearing for the 25,243-entry closure. | S3 four-leg argument; S2 confirmed independently while decoding. DAT-005 |
+| A2 | A block header's field 2 is the **width of the entry's four-u32 trailer (16 bytes)**, *not* the entry record size, which is `1 + name_length + 16` and varies. It reads 16 at all 66 blocks. | S3. **This corrects the plan's own earlier gloss**, which repeated the guide's error. DAT-006 |
+| A3 | The correct file bound for an entry is `offset + compressed_size`. `offset + uncompressed_size` overruns EOF for **7 real entries** (5 in MASTER: `PRO_SCEN.MSG`, `SCRNAME.MSG`, `STAT.MSG`, `TRAIT.MSG`, `WORLDMAP.MSG`; 2 in CRITTER: `NMPEASRP.FRM`, `RESERVAA.FRM`). | S3, 0 violations / 7 overruns across 25,243 entries. DAT-021 |
+| A4 | Path composition keys on the directory **name** `"."`, not on "the first block". CRITTER's block 0 is named `ART\CRITTERS` and all 5,459 of its paths keep that prefix; an index rule strips every one. | S3. DAT-011 |
+| A5 | The XP table is indexed by level **starting at level 0**: the 21 words are `L(L+1)/2` for `L` in 0..=20. Element 1 is level 1 and equals 1. The guide's anti-deviation row only works under this indexing. | S1 and S4 independently read the bytes. EXETBL-015 |
+| A6 | Every one of the six PE sections declares `VirtualSize == 0`. The textbook VA-to-offset rule uses `VirtualSize` and would reject all seven table addresses. Containment must use `SizeOfRawData`. | S4, recorded in EXETBL-002 |
+| A7 | A stat-limit record's field 0 is `0` in all 38 records, so it cannot be the stat index as the guide states. Fields 3/4/5 as min/max/default are confirmed. | S4, VERSION DIFFERENCE IDENTIFIED. EXETBL-016 |
+| A8 | **The guide's `00 00 0F` -> 18 spaces vector cannot falsify the write index.** All 18 bytes are `0x20` and the ring is prefilled `0x20`, so write starts 0, 4078 and 4095 all produce identical output. A canary built on that vector is a false pass. The canary must use a non-uniform fill. | S5 built it, saw it pass wrongly, and rewrote it. LZSS-021 |
+| A9 | The mid-pair-underflow case is **unreachable in the corpus**: 0 of 61,070 blocks end mid pair. It must be proven by a synthetic case only. | S2. LZSS-015 |
+| A10 | `DAT-023` (produced == declared for every entry) is now **CONFIRMED**: a full-corpus decode closed 20,456 of 20,456 chains on both `produced == uncompressed_size` and `consumed == compressed_size`, 61,070 LZSS blocks, 851,322,391 output bytes, zero failures. | S2 |
+| A11 | A private path leaked into `docs/spec/exe-tables.md`'s provenance line. Removed. `tools/check_layers.sh` also embedded a literal that matched its own mac-home rule; removed. `check_public.sh` now passes with 0 violations over 54 tracked files. | orchestrator, both defects reproduced first |
+| A12 | The guide's stated *cause* for the discarded `882` write-index figure does not reproduce: an 18-byte skew with the wrong sign gives 868 or 904, never 882. The figure is rejected either way, so the ruling stands and the cause was not adopted. | S2 |
+| A13 | The evidence-tag taxonomy has two holes: no tag for "a public format document says so", and none for "the guide mandates it and no original could witness it". Construction rules are tagged UNVERIFIED and the absence of a witness is stated, rather than claiming CONFIRMED. | S1 |
+
+### Open questions for the owner, raised by wave 1
+
+1. `actions/checkout` is pinned by tag, not by SHA, in CI. S6 would not invent a
+   digest.
+2. Branch protection is not configured, so `CODEOWNERS` is inert. The guide's
+   "the agent has no push rights to `main`" rule is unenforceable without it.
+3. The guide says CI runs the gate from the base branch. A pull request that
+   touches only `crates/` therefore never re-runs the gate against its own head.
+   Either the gate runs on both base and head for every pull request, or a clean
+   pull request silently skips the one check that matters.
+4. S6 argues `/spec/` and `/tools/` are near-unfalsifiable as CODEOWNERS entries,
+   because the check that actually catches an implementation influencing the
+   proof is the adversarial reviewer and the fail-before/pass-after step. The
+   rule was applied as written; narrowing it is an owner decision.
+5. S6 argues "public from the first commit" should be one private rehearsal push
+   into a bare repo with `check_public.sh` run over the whole history, because
+   git keeps everything and the guide's own hygiene section already prescribes
+   the history-rewrite remedy.
+
 ---
 
 ## Wave 1 — Six parallel agents, disjoint files

@@ -1,0 +1,384 @@
+# DAT archive container constants — PROTECTED file.
+#
+# Source of truth for docs/spec/dat.md. Every value here was re-read from the
+# bytes of MASTER.DAT and CRITTER.DAT in the reference install. On any other
+# install the gate reports "unsupported install"; these numbers are not relaxed.
+#
+# Values written as decimal and as hex are the same number. The hex form is
+# there because the guide and the container bytes speak in hex.
+
+[[constant]]
+id = "DAT-C001"
+value = 16
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-001"
+note = "Size of the root header: four big endian u32 at 0x00. No magic, version or checksum."
+
+[[constant]]
+id = "DAT-C002"
+value = 16
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-004"
+note = "Size of a block header, one per directory in the same order as the names. Replaces the root header in shape only; field 0 changes meaning (DAT-C010)."
+
+[[constant]]
+id = "DAT-C003"
+value = 16
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-006"
+note = "Block field 2 at all 66 measured block headers. It is the byte width of the four u32 trailer of an entry, NOT the size of a whole entry record, which is 1 + name_length + 16 and varies."
+
+[[constant]]
+id = "DAT-C004"
+value = 17
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-009"
+note = "Minimum entry record size: a one byte name length, an empty name, then the four u32. Included so the record length is not mistaken for the fixed 16 of DAT-C003."
+
+[[constant]]
+id = "DAT-C005"
+value = 20456
+unit = "chains verified exact"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-022"
+note = "Every one of the 20456 block chains consumes exactly its declared compressed size: 14997 of 14997 in MASTER.DAT and 5459 of 5459 in CRITTER.DAT, with no trailing bytes and no overrun. Established by header arithmetic alone, without decompressing, so it does not depend on the LZSS codec."
+
+[[constant]]
+id = "DAT-C010"
+value = 65
+unit = "directories"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-002"
+note = "MASTER.DAT root field 0. Also the count of length-prefixed names in the section 0x10..0x3F6."
+
+[[constant]]
+id = "DAT-C011"
+value = 1
+unit = "directories"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-002"
+note = "CRITTER.DAT root field 0. The single name is ART\\CRITTERS in section 0x10..0x1D."
+
+[[constant]]
+id = "DAT-C012"
+value = 11
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-005"
+note = "MASTER.DAT block 0 header field 0 at 0x3F6. Block 0 is the directory named '.', holding 11 root-level files. Directly contradicts reading field 0 as a directory count at a block."
+
+[[constant]]
+id = "DAT-C013"
+value = 5459
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-005"
+note = "CRITTER.DAT block 0 header field 0 at 0x1D. Equals the CRITTER.DAT entry count exactly, and is not its directory count, which is 1. This is the load-bearing disproof of the guide's silence on block field 0."
+
+[[constant]]
+id = "DAT-C020"
+value = 339379746
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-025"
+note = "MASTER.DAT file size, 0x1439_5BD2."
+
+[[constant]]
+id = "DAT-C021"
+value = 157085138
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-025"
+note = "CRITTER.DAT file size, 0x095C_3BD2."
+
+[[constant]]
+id = "DAT-C030"
+value = 19784
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-025"
+note = "MASTER.DAT entries. Equals the sum of field 0 over its 65 block headers."
+
+[[constant]]
+id = "DAT-C031"
+value = 5459
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-025"
+note = "CRITTER.DAT entries. Equals the sum of field 0 over its single block header."
+
+[[constant]]
+id = "DAT-C032"
+value = 25243
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-025"
+note = "Corpus total. 19784 + 5459 = 25243, matching DAT-C033 + DAT-C034."
+
+[[constant]]
+id = "DAT-C033"
+value = 4787
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-026"
+note = "Stored, mode 0x20. All in MASTER.DAT; CRITTER.DAT has none. All 4787 have compressed_size == 0."
+
+[[constant]]
+id = "DAT-C034"
+value = 20456
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-026"
+note = "Block chain, mode 0x40. 14997 in MASTER.DAT plus 5459 in CRITTER.DAT. All have a nonzero compressed_size."
+
+[[constant]]
+id = "DAT-C035"
+value = 0
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-013"
+note = "Mode 0x10 in this corpus. The rules of the 0x10 mode are untested by this data and the zero is a measurement, not a statement that the mode is dead."
+
+[[constant]]
+id = "DAT-C040"
+value = 240
+unit = "nibble mask"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-013"
+note = "0xF0. Payload mode is flags & 0xF0."
+
+[[constant]]
+id = "DAT-C041"
+value = 16
+unit = "nibble"
+evidence = "UNVERIFIED"
+claim = "DAT-014"
+note = "0x10, one LZSS stream whose input length is the compressed size. Guide-stated and zero measured entries exercise it, so no measured confirmation exists."
+
+[[constant]]
+id = "DAT-C042"
+value = 32
+unit = "nibble"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-015"
+note = "0x20, stored bytes whose length is the uncompressed size. 4787 entries, DAT-C033."
+
+[[constant]]
+id = "DAT-C043"
+value = 64
+unit = "nibble"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-016"
+note = "0x40, block chain. 20456 entries, DAT-C034."
+
+[[constant]]
+id = "DAT-C050"
+value = 32768
+unit = "bit mask"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-027"
+note = "0x8000. Bit 15 of the big endian u16 block header. Set means the block is raw."
+
+[[constant]]
+id = "DAT-C051"
+value = 32767
+unit = "length mask"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-027"
+note = "0x7FFF. Format ceiling on a block payload, for both the raw and the LZSS case. A reader must accept up to this and must not hard-code the observed maximum."
+
+[[constant]]
+id = "DAT-C052"
+value = 16384
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-027"
+note = "0x4000. Largest block payload actually present, reached by both a raw and an LZSS block in MASTER.DAT. Well below the 32767 ceiling of DAT-C051."
+
+[[constant]]
+id = "DAT-C053"
+value = 11132
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-027"
+note = "0x2B7C. Largest LZSS block payload in CRITTER.DAT, which contains no raw blocks at all."
+
+[[constant]]
+id = "DAT-C060"
+value = 67663
+unit = "blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-020"
+note = "Corpus block total. 38020 in MASTER.DAT plus 29643 in CRITTER.DAT, and DAT-C061 + DAT-C062 = 61070 + 6593 = 67663."
+
+[[constant]]
+id = "DAT-C061"
+value = 61070
+unit = "blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-020"
+note = "LZSS blocks. 31427 in MASTER.DAT plus 29643 in CRITTER.DAT."
+
+[[constant]]
+id = "DAT-C062"
+value = 6593
+unit = "blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-020"
+note = "Raw blocks, all of them inside MASTER.DAT chain entries, so those chains mix both kinds and the header bit is tested per block. CRITTER.DAT has none."
+
+[[constant]]
+id = "DAT-C070"
+value = 211060669
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-012"
+note = "Offset of the first entry in MASTER.DAT tree order, COLOR.PAL. Proof that tree order is not physical order."
+
+[[constant]]
+id = "DAT-C071"
+value = 556484
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-012"
+note = "Smallest offset anywhere in MASTER.DAT. Together with DAT-C070 this fixes the archive's physical span at 210 million bytes below its first tree entry."
+
+[[constant]]
+id = "DAT-C080"
+value = 33536
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-029"
+note = "COLOR.PAL uncompressed_size, the first entry of MASTER.DAT. Independently equal to the palette size the guide states, which is what makes uncompressed_size the decoded length. The entry is a chain whose stored form is 9292 bytes."
+
+[[constant]]
+id = "DAT-C081"
+value = 9292
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-029"
+note = "COLOR.PAL compressed_size, the chain's framed length. Contrast with DAT-C080 to see the two different lengths of the same entry."
+
+[[constant]]
+id = "DAT-C090"
+value = 94
+unit = "raw field 1"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-002"
+note = "MASTER.DAT root capacity. Read and discarded; a capacity is not a length."
+
+[[constant]]
+id = "DAT-C091"
+value = 10
+unit = "raw field 1"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-002"
+note = "CRITTER.DAT root capacity. Read and discarded."
+
+[[constant]]
+id = "DAT-C092"
+value = 22
+unit = "raw field 1"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-007"
+note = "MASTER.DAT block 0 capacity. Same verdict as at the root: ignore."
+
+[[constant]]
+id = "DAT-C093"
+value = 6142
+unit = "raw field 1"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-007"
+note = "CRITTER.DAT block 0 capacity. Larger than the entry count it sits beside, which is the clearest demonstration that field 1 is not a count."
+
+[[constant]]
+id = "DAT-C100"
+value = 33691024
+unit = "raw field 3"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-002"
+note = "MASTER.DAT root dead pointer. Read and discarded. Its high bytes 0x0202 are not an address inside either archive."
+
+[[constant]]
+id = "DAT-C101"
+value = 33755200
+unit = "raw field 3"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-002"
+note = "CRITTER.DAT root dead pointer. Read and discarded."
+
+[[constant]]
+id = "DAT-C102"
+value = 42414840
+unit = "raw field 3"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-007"
+note = "MASTER.DAT block 0 dead pointer. Read and discarded."
+
+[[constant]]
+id = "DAT-C103"
+value = 36372536
+unit = "raw field 3"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-007"
+note = "CRITTER.DAT block 0 dead pointer. Read and discarded."
+
+[[constant]]
+id = "DAT-C110"
+value = 39256
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-021"
+note = "0x9958. Largest amount by which offset + uncompressed_size runs past EOF, on TEXT\\SPANISH\\GAME\\SCRNAME.MSG in MASTER.DAT. Bounding a stored region by the uncompressed size would reject this entry; 7 entries in total are affected, 5 in MASTER.DAT and 2 in CRITTER.DAT."
+
+[[constant]]
+id = "DAT-C120"
+value = 0
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-021"
+note = "Entries in either archive with offset + compressed_size past EOF. The compressed size is the correct file bound; see DAT-C110 for the uncompressed bound failing."
+
+[[constant]]
+id = "DAT-C130"
+value = 0
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-017"
+note = "Stored entries with a nonzero compressed_size. Pairs with DAT-C131; together they are an exhaustive invariant across all 25243 entries."
+
+[[constant]]
+id = "DAT-C131"
+value = 0
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-017"
+note = "Chain entries with a zero compressed_size. See DAT-C130."
+
+[[constant]]
+id = "DAT-C140"
+value = 0
+unit = "entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-013"
+note = "Entries with flags == 0 in this corpus. The 0 to 0x10 substitution of DAT-C040 is therefore defensive and never fires on this install."
+
+[[constant]]
+id = "DAT-C150"
+value = 0
+unit = "duplicate paths"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-011"
+note = "Duplicate composed paths across 25243 entries once the '.' directory contributes no separator. This is what makes a lookup table sound, and it depends on the composition rule of DAT-C151."
+
+[[constant]]
+id = "DAT-C151"
+value = 1
+unit = "byte"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "DAT-011"
+note = "Length of the MASTER.DAT root directory name '.' at 0x11. The composition rule keys on this name, not on a block index: CRITTER.DAT's block 0 is not named '.' and all 5459 of its paths keep the ART\\CRITTERS prefix."

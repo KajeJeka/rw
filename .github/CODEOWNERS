@@ -1,0 +1,55 @@
+# CODEOWNERS - PROTECTED file.
+#
+# WHY THIS FILE EXISTS.
+#
+# The project's whole verification story rests on one rule: the party that writes the
+# code must never control the proof. An agent told to make tests pass takes the cheapest
+# path, and the cheapest path in a Rust repository is to edit the test, the lint table,
+# the expected count or the CI file. Those are all in this repository, and all of them
+# would be the same person.
+#
+# So every path that can make a green result less meaningful is listed below, and a
+# change to any of them requires review from the owner rather than from whoever
+# authored the code being proved. Enforce this with branch protection: an approval from
+# the owner on these paths, plus the CI gate running from the base branch rather than
+# from the pull request branch.
+#
+# CODEOWNERS cannot address a section of a file, only a whole file. The lint table
+# lives inside the root Cargo.toml, so that file is owned whole.
+#
+# Owner placeholder: the repository owner.
+
+# Gate tests, written by the test-author role from the specs alone.
+/tests/                 @KajeJeka
+
+# The FO1_DATA harness and the test author's independent reference decoders.
+/crates/fo1-tests/      @KajeJeka
+
+# The specifications, written by the spec-author role.
+/docs/spec/             @KajeJeka
+
+# The constants ledger.
+/spec/                  @KajeJeka
+
+# Gate tooling: the hygiene, layering, trace and gate scripts.
+/tools/                 @KajeJeka
+
+# CI and repository governance, including this file and these templates.
+/.github/               @KajeJeka
+
+# The lint relaxations that apply inside tests only.
+/clippy.toml            @KajeJeka
+
+# The dependency policy.
+/deny.toml              @KajeJeka
+
+# The gate count floors. These can only rise, and only with the owner's approval.
+/expected_counts.toml   @KajeJeka
+
+# Approved surviving mutants. A survivor not listed here fails the milestone.
+/mutants-allow.md       @KajeJeka
+
+# The workspace lint table: unsafe_code, missing_docs, the unwrap/expect/panic and
+# indexing denials, the cast denials, and allow_attributes_without_reason. Most of the
+# project's "total reader" and "explicit arithmetic" guarantees are enforced from here.
+/Cargo.toml             @KajeJeka

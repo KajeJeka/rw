@@ -1,0 +1,220 @@
+# Byte order layer constants.
+#
+# One row per number docs/spec/endian.md fixes. Merged into the protected
+# ledger at spec/constants.toml by the test-author role.
+#
+# unit is "bytes" for a width, a length or an offset measured in bytes,
+# "count" for a number of elements or entries, and "none" for a value that is
+# neither a length nor a count.
+#
+# A row's evidence tag is the tag of the claim it was introduced by. Where a
+# claim is a construction rule the original could not witness, the row carries
+# UNVERIFIED and the note says so; implement and pin it regardless.
+
+[[constant]]
+id = "END-C001"
+value = 1
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-014"
+note = "Width of one u8 read, and of one skip or bytes call for a single byte."
+
+[[constant]]
+id = "END-C002"
+value = 2
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-014"
+note = "Width of one u16 read and of one i16 read. Also the width of the DAT block chain block header, whose big endian u16 carries the raw flag in bit 15."
+
+[[constant]]
+id = "END-C003"
+value = 4
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-014"
+note = "Width of one u32 read and of one i32 read. Also the width of every field in the executable layer tables and of the four u32 words in a DAT header."
+
+[[constant]]
+id = "END-C004"
+value = 16777216
+unit = "none"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-006"
+note = "The XP value for level 1 read big-endian. Anti-deviation witness for the executable layer. The four bytes at virtual address 0x5082D4 are 01 00 00 00; folded most significant byte first they give exactly this value, with no error raised."
+
+[[constant]]
+id = "END-C005"
+value = 1
+unit = "none"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-006"
+note = "The XP value for level 1 read little-endian, and the correct value. Same four bytes as END-C004. A test that reads the XP table through the asset layer reader must get END-C004, and one that reads it through the executable layer reader must get this."
+
+[[constant]]
+id = "END-C006"
+value = 65
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-002"
+note = "MASTER.DAT directory count, folded big-endian out of the first word of the 16 byte root header. The guide records 65 directories for that archive independently, so the fold matches the data."
+
+[[constant]]
+id = "END-C007"
+value = 1090519040
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-035"
+note = "The same four bytes as END-C006 folded little-endian. Anti-deviation witness for the asset layer, the counterpart of END-C004: no archive holds this many directories, and the mismatch proves the order by magnitude rather than by an absence of error."
+
+[[constant]]
+id = "END-C008"
+value = 21
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-005"
+note = "Entries in the XP thresholds table at virtual address 0x5082D0, indexed by level 0 through 20."
+
+[[constant]]
+id = "END-C009"
+value = 84
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-005"
+note = "Total length of the XP thresholds table: END-C008 entries of END-C003 bytes. A reader that hands out the whole table in one bytes call must be handed exactly this many."
+
+[[constant]]
+id = "END-C010"
+value = 5276368
+unit = "none"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-005"
+note = "Virtual address of the XP thresholds table in the reference build, 0x5082D0. Located through the PE section headers, not typed into code as an offset. unit is none because this is a virtual address rather than a length."
+
+[[constant]]
+id = "END-C011"
+value = 2
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-001"
+note = "Number of byte order layers that exist: the big-endian asset layer and the little-endian executable layer. Revision 1's single rule is superseded by correction C1."
+
+[[constant]]
+id = "END-C012"
+value = 2
+unit = "count"
+evidence = "UNVERIFIED"
+claim = "END-021"
+note = "Error variants per crate: Truncated and SeekOutOfRange. A construction rule; the original had no error type, so no byte witnesses it. The tag records the missing witness, not doubt. The set is closed and matched exhaustively with no wildcard arm."
+
+[[constant]]
+id = "END-C013"
+value = 14
+unit = "bytes"
+evidence = "CONFIRMED IN COMMUNITY EDITION ONLY"
+claim = "END-025"
+note = "Length of the .ACM header, every byte of it little-endian: magic, sample count u32, channel count u16, sample rate u16, and one u16 packing rows and levels. Byte check queued."
+
+[[constant]]
+id = "END-C014"
+value = 18
+unit = "bytes"
+evidence = "CONFIRMED IN COMMUNITY EDITION ONLY"
+claim = "END-026"
+note = "Length of the .MVE magic. The magic itself is text and has no byte order; every field after these bytes is little-endian. Byte check queued."
+
+[[constant]]
+id = "END-C015"
+value = 16
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-002"
+note = "Length of the DAT root header: four big-endian u32 words, directory count, capacity, size and a dead pointer."
+
+[[constant]]
+id = "END-C016"
+value = 16
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-002"
+note = "Length of each per-directory DAT block header. Same shape as the root header with the size field set to 16."
+
+[[constant]]
+id = "END-C017"
+value = 30051
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-028"
+note = "Total size of the original save header, whose integers are big-endian. The guide records that the binary confirms the constants 18, 24, 30, 128 and 29,792 within it."
+
+[[constant]]
+id = "END-C018"
+value = 1028
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-029"
+note = "Size of save block 20, the world map, copied raw and never routed through the integer reader."
+
+[[constant]]
+id = "END-C019"
+value = 899
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-029"
+note = "First world map grid in save block 20, 31 rows by 29 columns of raw x86 memory bytes."
+
+[[constant]]
+id = "END-C020"
+value = 105
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-029"
+note = "Second world map grid in save block 20, 15 rows by 7 columns of raw x86 memory bytes. END-C019 plus this plus END-C024 closes on END-C018 exactly."
+
+[[constant]]
+id = "END-C021"
+value = 216
+unit = "bytes"
+evidence = "UNVERIFIED"
+claim = "END-030"
+note = "Size of save block 23, the skill use slots. The element type is unresolved, so this spec fixes the size and nothing about how the bytes inside it are read."
+
+[[constant]]
+id = "END-C022"
+value = 31
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-029"
+note = "Rows in the first world map grid. With END-C023 it gives END-C019."
+
+[[constant]]
+id = "END-C023"
+value = 29
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-029"
+note = "Columns in the first world map grid. With END-C022 it gives END-C019."
+
+[[constant]]
+id = "END-C024"
+value = 24
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-029"
+note = "Six ints at the tail of save block 20, after the two raw grids. They are the only integers in that block."
+
+[[constant]]
+id = "END-C025"
+value = 2
+unit = "count"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-011"
+note = "Number of reader types, one per layer, written out twice. No function, macro, generic or private helper is shared between the two crates."
+
+[[constant]]
+id = "END-C026"
+value = 210
+unit = "none"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "END-007"
+note = "The last XP threshold, read little-endian: L = 20 gives 20 times 21 over 2. Folded big-endian the same four bytes give a negative number, which is why a wrong-order read is caught by magnitude and not by an error. The caller scales every value by 1,000."

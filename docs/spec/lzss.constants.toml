@@ -1,0 +1,370 @@
+# LZSS decoder constants — PROTECTED file.
+#
+# Source of truth for docs/spec/lzss.md. Every value marked
+# CONFIRMED AGAINST ORIGINAL BINARY was measured by decoding the bytes of
+# MASTER.DAT and CRITTER.DAT in the reference install with a reference decoder
+# written for the spec. On any other install the gate reports "unsupported
+# install"; these numbers are not relaxed.
+#
+# Values written as decimal and as hex are the same number. The hex form is
+# there because the guide and the token bytes speak in hex.
+
+[[constant]]
+id = "LZSS-C001"
+value = 4096
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-001"
+note = "Ring size. Allocated once per LZSS block. Every index wraps at this value."
+
+[[constant]]
+id = "LZSS-C002"
+value = 32
+unit = "decimal"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-002"
+note = "0x20. Value prefilled into ring slots 0..=4077. Confirmed by counting reads that land on a never-written slot in that region: 41,993,076 reads across 57,770 blocks."
+
+[[constant]]
+id = "LZSS-C003"
+value = 4077
+unit = "last prefilled ring index"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-002"
+note = "Inclusive upper bound of the prefilled region. LZSS-C003 value 0x20 applies to indices 0..=4077; 4078..=4095 start as zero. Pinned so the prefill boundary is an exact index rather than a difference."
+
+[[constant]]
+id = "LZSS-C004"
+value = 4078
+unit = "ring index"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-003"
+note = "RING_WRITE_START. Where the write head starts in every fresh ring. 4096 - 4078 = 18, the standard LZSS lookahead, which is the first of the three reasons for the ruling."
+
+[[constant]]
+id = "LZSS-C005"
+value = 18
+unit = "ring indices"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-003"
+note = "4096 - 4078. The distance from the write head's start to the end of the ring, equal to MAX_MATCH. This is the identity that justifies LZSS-C004 rather than 0, 4095, 4077 or 4096."
+
+[[constant]]
+id = "LZSS-C006"
+value = 3
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-008"
+note = "MIN_MATCH. (b2 & 0x0F) + 3, so the low nibble 0 encodes a 3 byte run. Both ends of the 3..=18 range are reachable in the corpus."
+
+[[constant]]
+id = "LZSS-C007"
+value = 18
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-008"
+note = "MAX_MATCH. (b2 & 0x0F) + 3, so the low nibble 0x0F encodes an 18 byte run."
+
+[[constant]]
+id = "LZSS-C008"
+value = 15
+unit = "nibble mask"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-008"
+note = "0x0F. Low nibble of the second byte: the length bias, length = (b2 & 0x0F) + MIN_MATCH. The largest value, 15, gives MAX_MATCH."
+
+[[constant]]
+id = "LZSS-C009"
+value = 240
+unit = "nibble mask"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-008"
+note = "0xF0. High nibble of the second byte: the top four bits of the source position, source = b1 | ((b2 & 0xF0) << 4)."
+
+[[constant]]
+id = "LZSS-C010"
+value = 4095
+unit = "ring index"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-012"
+note = "0xFFF. Largest addressable source index. Algebraic: b1 contributes at most 0xFF and (b2 & 0xF0) << 4 at most 0xF00. Observed: the corpus requests exactly 4095 and never more. This is the anti deviation row 'ring indexes above 4,095 are unreachable'."
+
+[[constant]]
+id = "LZSS-C011"
+value = 8
+unit = "tokens per control byte"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-005"
+note = "The guide's named ruling. Measured over all 20,456 chain entries: 8 tokens per control byte closes 20,456 of 20,456; 1 token per control byte closes 1 of 20,456. Corpus census: 27,486,754 control bytes carrying 144,696,285 literal tokens and 74,987,432 match tokens."
+
+[[constant]]
+id = "LZSS-C012"
+value = 4116
+unit = "bytes"
+evidence = "UNVERIFIED"
+claim = "LZSS-004"
+note = "The ring size the original binary declares. Guide-stated; the original executable was not read. The measurable consequence is LZSS-C010: slots 4096..=4115, the last 20, cannot be addressed by any token, which is why the waste is invisible. This spec allocates 4096 and does not reproduce it."
+
+[[constant]]
+id = "LZSS-C013"
+value = 20
+unit = "unreachable ring indices"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-004"
+note = "4116 - 4096. The tail of the original's declared ring that no token can reach. Follows from LZSS-C010, not from reading the original. Included so a test can assert that allocating 4096 loses no reachable slot."
+
+[[constant]]
+id = "LZSS-C020"
+value = 61070
+unit = "LZSS blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-022"
+note = "Corpus LZSS block total, decoded cleanly: 31,427 in MASTER.DAT plus 29,643 in CRITTER.DAT. Equals the guide's own figure, arrived at independently. Each starts a fresh ring (LZSS-016)."
+
+[[constant]]
+id = "LZSS-C021"
+value = 20456
+unit = "chain entries"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-022"
+note = "Every chain entry in both archives was decoded end to end. produced == uncompressed_size and consumed == compressed_size hold for 20,456 of 20,456, with 851,322,391 bytes of output and zero failures. This closes the open claim DAT-023 in docs/spec/dat.md."
+
+[[constant]]
+id = "LZSS-C022"
+value = 52229
+unit = "LZSS blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-013"
+note = "Blocks whose input ran out part-way through a control byte, 85.5% of 61,070. The mid control byte stop is the normal termination, not an edge case. A decoder that insists on eight tokens per control byte errors on these."
+
+[[constant]]
+id = "LZSS-C023"
+value = 8841
+unit = "LZSS blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-013"
+note = "Blocks whose input ran out exactly on a control byte boundary. LZSS-C022 + LZSS-C023 = LZSS-C020."
+
+[[constant]]
+id = "LZSS-C024"
+value = 0
+unit = "LZSS blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-015"
+note = "Blocks that end mid back reference. Never happens in this install, so the truncated match guard of LZSS-015 is untested by the corpus and must be proven by a synthetic case. A decoder that loops here passes the whole corpus."
+
+[[constant]]
+id = "LZSS-C030"
+value = 78
+unit = "decimal"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-017"
+note = "0x4E. Low 8 bits of the source ring index 846 = 0x34E. First byte of the guide's disk token for a 9 byte copy from output position 4960 to output position 5000."
+
+[[constant]]
+id = "LZSS-C031"
+value = 54
+unit = "decimal"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-017"
+note = "0x36. Second byte of the same token: high 4 bits of 846, which is 3, in the top nibble, and the length bias 9 - 3 = 6 in the low nibble."
+
+[[constant]]
+id = "LZSS-C032"
+value = 846
+unit = "ring index"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-017"
+note = "0x34E. (4960 + 4078) mod 4096. The ring slot a 9 byte copy from output position 4960 reads. Also the value LZSS-C030 and LZSS-C031 encode."
+
+[[constant]]
+id = "LZSS-C033"
+value = 886
+unit = "ring index"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-017"
+note = "(5000 + 4078) mod 4096. The write head when output position 5000 is next. 886 - 846 = 40, and 5000 - 4960 = 40, which is the check that the source index is a ring position and not a distance."
+
+[[constant]]
+id = "LZSS-C034"
+value = 4960
+unit = "output position"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-017"
+note = "Where the 9 byte run of LZSS-017 starts: 5000 - 40. Pinned so a test can assert the source position as well as the token."
+
+[[constant]]
+id = "LZSS-C035"
+value = 9
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-017"
+note = "Length encoded by token 4E 36: (0x36 & 0x0F) + 3 = 6 + 3."
+
+[[constant]]
+id = "LZSS-C036"
+value = 18
+unit = "spaces"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-018"
+note = "Decoded length of the stream 00 00 0F. Its source is ring slot 0, which is prefilled 0x20 and never written, so all 18 bytes are spaces. The stream consumes exactly 3 bytes and ends four tokens short of its control byte's eight, so this one vector pins the prefill value and the mid control byte stop together."
+
+[[constant]]
+id = "LZSS-C040"
+value = 117
+unit = "decimal"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-019"
+note = "0x75. Low 8 bits of the source ring index 885 = 0x375. First byte of the token that repeats the previous byte 18 times at write index 886."
+
+[[constant]]
+id = "LZSS-C041"
+value = 63
+unit = "decimal"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-019"
+note = "0x3F. Second byte of the same token: high 4 bits of 885, which is 3, in the top nibble, and the length bias 0x0F = 15 in the low nibble, giving length 18."
+
+[[constant]]
+id = "LZSS-C042"
+value = 885
+unit = "ring index"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-019"
+note = "0x375. (0x75 | ((0x3F & 0xF0) << 4)). Write index 886 minus 885 is 1, so the run reads the byte just written. This is the smallest distance the corpus uses and the case that makes read-before-write ordering load-bearing: read 885, write 886, then read 886 which now holds what was just written, and so on for 18 steps."
+
+[[constant]]
+id = "LZSS-C050"
+value = 882
+unit = "ring index"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-020"
+note = "0x372. The source index the discarded older note encoded as 72 36. At write index 886 it copies from 4 bytes back, not 9, so it is wrong. The note's stated cause, an 18 byte skew with the wrong sign, does not reproduce this figure: 886 -/+ 18 is 868 or 904, not 882. Recorded so the number is not rediscovered and reused."
+
+[[constant]]
+id = "LZSS-C051"
+value = 114
+unit = "decimal"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-020"
+note = "0x72. The first byte of the discarded pair. Together with LZSS-C050 it decodes to source 882, four bytes behind write index 886."
+
+[[constant]]
+id = "LZSS-C060"
+value = 13655
+unit = "LZSS blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-021"
+note = "MASTER.DAT first LZSS blocks used for the write index canary: one per chain entry whose declared uncompressed size is at most 30,000. RING_WRITE_START of 0, 4077, 4095 and 4096 each change the output of all 13,655; 4078 with RING_FILL 0x20 changes none."
+
+[[constant]]
+id = "LZSS-C061"
+value = 2115
+unit = "LZSS blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-021"
+note = "CRITTER.DAT counterpart of LZSS-C060. RING_WRITE_START of 0, 4077, 4095 and 4096 each change the output of all 2,115; the canonical parameters change none."
+
+[[constant]]
+id = "LZSS-C062"
+value = 0
+unit = "blocks with a length difference"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-021"
+note = "Length mismatches across every canary variant over LZSS-C060 plus LZSS-C061, 15,770 blocks. Every wrong write index produced the canonical byte count and only different bytes. A canary that compares lengths therefore passes on every wrong variant and proves nothing; it has to compare bytes."
+
+[[constant]]
+id = "LZSS-C063"
+value = 756
+unit = "LZSS blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-021"
+note = "MASTER.DAT blocks whose output changes when RING_FILL is 0x00 instead of 0x20. Much lower than the write index canaries because only blocks short enough to read back into the prefilled region are affected, so a prefill canary must pin short blocks by name or use a set known to contain them."
+
+[[constant]]
+id = "LZSS-C064"
+value = 117
+unit = "LZSS blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-021"
+note = "CRITTER.DAT counterpart of LZSS-C063. Same caveat about the prefill canary being weak on block length alone."
+
+[[constant]]
+id = "LZSS-C070"
+value = 41993076
+unit = "reads"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-002"
+note = "Reads of a ring slot that no output byte has written yet, in the prefilled region 0..=4077, across 57,770 blocks. Every one of these bytes must be 0x20. This is what makes the prefill load-bearing rather than decorative."
+
+[[constant]]
+id = "LZSS-C071"
+value = 57770
+unit = "LZSS blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-002"
+note = "Blocks in which at least one read lands on the never-written part of the prefilled region 0..=4077. 94.6% of all 61,070 blocks."
+
+[[constant]]
+id = "LZSS-C072"
+value = 356192
+unit = "reads"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-002"
+note = "Reads of a ring slot that no output byte has written yet, in the zero region 4078..=4095, across 46,275 blocks. Every one of these bytes must be 0x00, so the 'the rest zero' half of the prefill rule is load-bearing too and not merely defensive."
+
+[[constant]]
+id = "LZSS-C073"
+value = 46275
+unit = "LZSS blocks"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-002"
+note = "Blocks in which at least one read lands on the never-written part of the zero region 4078..=4095. 75.7% of all 61,070 blocks."
+
+[[constant]]
+id = "LZSS-C080"
+value = 1016
+unit = "chain payloads"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-017"
+note = "MASTER.DAT chain payloads whose compressed bytes contain the pair 4E 36. Confirms the guide's disk token is real input and not a hypothetical."
+
+[[constant]]
+id = "LZSS-C081"
+value = 1024
+unit = "chain payloads"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-019"
+note = "MASTER.DAT chain payloads whose compressed bytes contain the pair 75 3F."
+
+[[constant]]
+id = "LZSS-C082"
+value = 385
+unit = "chain payloads"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-018"
+note = "MASTER.DAT chain payloads whose compressed bytes contain the stream 00 00 0F."
+
+[[constant]]
+id = "LZSS-C090"
+value = 144696285
+unit = "literal tokens"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-006"
+note = "Corpus token census over 61,070 blocks. Each consumed one input byte and produced one output byte."
+
+[[constant]]
+id = "LZSS-C091"
+value = 74987432
+unit = "match tokens"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-007"
+note = "Corpus token census over 61,070 blocks. Each consumed two input bytes and produced 3 to 18 output bytes."
+
+[[constant]]
+id = "LZSS-C092"
+value = 27486754
+unit = "control bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "LZSS-005"
+note = "Corpus control byte count. LZSS-C090 + LZSS-C091 is not eight times this, because a control byte's eight token slots are frequently cut short by the end of the block; LZSS-C022 measures how often."

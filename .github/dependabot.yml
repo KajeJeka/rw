@@ -1,0 +1,18 @@
+version: 2
+
+updates:
+  # The workspace has no third-party dependencies today. This entry exists so that
+  # the day one is added, the licence check in `deny.toml` and the line in the
+  # dependency ledger are the things that have to move with it, not something
+  # nobody noticed.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

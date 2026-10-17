@@ -5,10 +5,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish = false
+license = "LicenseRef-Proprietary"
 
 [lints]
 workspace = true
 
 [dependencies]
-fo1-bigendian.workspace = true
-fo1-lzss.workspace = true
+fo1-bigendian = { path = "../fo1-bigendian" }
+fo1-lzss = { path = "../fo1-lzss" }

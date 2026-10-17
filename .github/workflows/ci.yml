@@ -1,0 +1,87 @@
+# Continuous integration for RUSTY WASTELAND.
+#
+# THIS JOB HAS NO GAME DATA AND MUST NEVER ACQUIRE ANY.
+#
+# Every test that needs a real Fallout 1 install is marked `#[ignore]` and is run by
+# the owner on their own machine through `tools/gate.sh`, which is the only entry
+# point that counts as a full gate. This workflow deliberately has no step that sets
+# FO1_DATA, no step that runs `cargo test -- --ignored`, no step that downloads an
+# archive, and no step that reaches any network endpoint beyond the runner's own
+# toolchain provisioning. Every test executed here builds its own synthetic input in
+# code.
+
+name: ci
+
+# Quoted so that a YAML 1.1 parser, which reads a bare `on` as a boolean, sees the same
+# structure GitHub's parser sees.
+"on":
+  push:
+  pull_request:
+
+# Read-only. This workflow needs to clone and build. It does not need to write
+# anything back, open a pull request, publish a package, or read any secret.
+permissions:
+  contents: read
+
+# One run per ref. A newer push supersedes an in-flight run on the same ref, so a
+# force-push does not leave a stale green sitting next to a newer red.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate-synthetic:
+    name: Synthetic gate
+    # ubuntu-24.04 provides the shell and a working /usr/bin/bash, which is what
+    # tools/*.sh need. The scripts are invoked through `bash` explicitly rather
+    # than relying on the executable bit, because a checkout made on Windows does
+    # not reliably preserve it. Contributors running the same scripts on Windows
+    # need Git for Windows' bundled bash; they are not on PATH by default.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      # Pinned by tag rather than by commit SHA. A SHA pin is the stronger form and
+      # is the right follow-up, but it must be a SHA this project has verified, not
+      # one copied from memory. Left as an open item for the owner.
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install the pinned toolchain
+        # Pinned to an exact version, not to `stable`. The project's rust-version is
+        # 1.96 and its lint table is part of its specification; a moving channel
+        # would change what CI proves without any change to the repository.
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Documentation
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      # Both scripts read the owner's private term list and the Community Edition
+      # identifier list from the environment when they are present. Neither exists
+      # here and neither may be fetched, so both are declared empty. A script must
+      # degrade to a narrower scan in that case, not fail.
+      - name: Public hygiene
+        run: bash tools/check_public.sh
+        env:
+          FO1_PRIVATE_TERMS: ""
+          FO1_REF: ""
+
+      - name: Layering
+        run: bash tools/check_layers.sh
+        env:
+          FO1_REF: ""
+
+      # SYNTHETIC ONLY. Never `--ignored` here: those tests read the player's
+      # install through FO1_DATA, and CI holds none.
+      - name: Tests
+        run: cargo test --workspace

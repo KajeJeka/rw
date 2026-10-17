@@ -24,17 +24,19 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.96"
 publish = false
+# SPDX has no identifier for "this project has not chosen a licence yet", which
+# is the honest state. See LICENSE and the note in deny.toml.
+license = "LicenseRef-Proprietary"
 # The licence is an open owner decision (guide: Open items, "Project"). It is
 # deliberately NOT declared here: `publish = false` means cargo never needs it,
 # and declaring one we have not chosen would be worse than declaring none.
 
-[workspace.dependencies]
-fo1-bigendian = { path = "crates/fo1-bigendian" }
-fo1-endian-host = { path = "crates/fo1-endian-host" }
-fo1-lzss = { path = "crates/fo1-lzss" }
-fo1-dat = { path = "crates/fo1-dat" }
-fo1-exe = { path = "crates/fo1-exe" }
-fo1-tests = { path = "crates/fo1-tests" }
+# There is deliberately no [workspace.dependencies] table. Every path dependency
+# in this workspace names its path directly. cargo-deny 0.20.2 reports
+# `bug[unresolved-workspace-dependency]` for a workspace-inherited path
+# dependency and `error[wildcard]` for `[dependencies] foo.workspace = true`,
+# both of which are tool limitations rather than real findings. Six path
+# dependencies spelled out is less code than six workarounds in deny.toml.
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -66,6 +68,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish = false
+license = "LicenseRef-Proprietary"
 
 [lib]
 path = "src/lib.rs"
@@ -74,9 +77,38 @@ path = "src/lib.rs"
 workspace = true
 
 [dev-dependencies]
-fo1-bigendian.workspace = true
-fo1-endian-host.workspace = true
-fo1-lzss.workspace = true
-fo1-dat.workspace = true
-fo1-exe.workspace = true
-fo1-tests.workspace = true
+fo1-bigendian = { path = "crates/fo1-bigendian" }
+fo1-endian-host = { path = "crates/fo1-endian-host" }
+fo1-lzss = { path = "crates/fo1-lzss" }
+fo1-dat = { path = "crates/fo1-dat" }
+fo1-exe = { path = "crates/fo1-exe" }
+fo1-tests = { path = "crates/fo1-tests" }
+
+# Cargo auto-discovers `tests/*.rs` but NOT `tests/gates/*.rs`, because a
+# subdirectory is not a test target. Every gate test is therefore declared here.
+# These entries are part of the frozen wave-0 contract: a new gate file needs a
+# new [[test]] entry, which is one more place the owner must approve a change to
+# when the gate grows.
+[[test]]
+name = "synthetic_endian"
+path = "tests/gates/synthetic_endian.rs"
+
+[[test]]
+name = "synthetic_lzss"
+path = "tests/gates/synthetic_lzss.rs"
+
+[[test]]
+name = "synthetic_dat"
+path = "tests/gates/synthetic_dat.rs"
+
+[[test]]
+name = "install_archive"
+path = "tests/gates/install_archive.rs"
+
+[[test]]
+name = "install_plaintext"
+path = "tests/gates/install_plaintext.rs"
+
+[[test]]
+name = "install_exe_tables"
+path = "tests/gates/install_exe_tables.rs"

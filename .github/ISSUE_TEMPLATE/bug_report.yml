@@ -1,0 +1,160 @@
+name: Bug report
+description: Report something the engine does wrongly, or a claim it contradicts.
+title: "[Bug]: "
+body:
+  - type: markdown
+    value: |
+      Before you file this, read the two rules below. They are not optional and they are
+      the reason this repository can stay open source.
+
+      **Never attach game files.** No archives, no executables, no art, no maps, no
+      scripts, no message text, no screenshots of the original game. Not in the issue,
+      not in a zip, not as a base64 blob. The hygiene script fails the build on any
+      tracked file that looks like game data, and a leak into the git history is
+      permanent.
+
+      **Never paste decompiled or decompilation source.** Do not paste functions,
+      comments, identifier names or structure from Fallout 1 Community Edition or from
+      any other decompiler's output. Describe the behaviour in your own words and name
+      the specification claim it contradicts.
+
+      If a report needs bytes from your install to make sense, describe how to obtain
+      those bytes yourself and what to assert about them. Do not supply the bytes.
+
+  - type: checkboxes
+    id: no-game-files
+    attributes:
+      label: I have not attached any game file, and I will not.
+      options:
+        - label: >
+            I confirm this report contains no game data, no archive, no executable, no
+            art, no map, no script and no screenshot of the original game, and I will
+            not add any later.
+          required: true
+
+  - type: checkboxes
+    id: no-decompiled-source
+    attributes:
+      label: I have not pasted decompiled or decompilation source.
+      options:
+        - label: >
+            I confirm that nothing in this report is copied or pasted from
+            decompiled or decompilation source, in whole or in part, and that I have not
+            transcribed identifier names, comments or structure from it.
+          required: true
+
+  - type: checkboxes
+    id: own-copy
+    attributes:
+      label: I have my own copy of the game.
+      options:
+        - label: >
+            I am using my own legally obtained copy of Fallout 1. I understand this
+            project does not ship, host or distribute game data and requires the player
+            to supply their own install.
+          required: true
+
+  - type: markdown
+    value: |
+      A report is only useful if someone without your machine can check it. Everything
+      below should be answerable without your install.
+
+  - type: dropdown
+    id: crate
+    attributes:
+      label: Which crate
+      description: >
+        Pick the crate you think is wrong. "Not yet implemented" is a valid answer for
+        anything past the archive foundation.
+      options:
+        - fo1-bigendian
+        - fo1-endian-host
+        - fo1-lzss
+        - fo1-dat
+        - fo1-exe
+        - fo1-tests
+        - gate tooling in tools/
+        - continuous integration
+        - build configuration or lint table
+        - not yet implemented
+        - other
+    validations:
+      required: true
+
+  - type: input
+    id: spec-claim
+    attributes:
+      label: Specification claim
+      description: >
+        The claim id this contradicts, such as DAT-014 or LZSS-006. Leave blank if you
+        do not know it yet.
+      placeholder: DAT-000
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the specification says should happen
+      description: >
+        In your own words, or quote our specification. Quoting our specification is
+        fine and encouraged.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happens
+      description: >
+        The exact error, panic, assertion or wrong value. Paste output text, not
+        game bytes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce it without game data
+      description: >
+        A test or a command that someone else can run. A synthetic input built in code
+        is ideal. Say so plainly if the bug can only be reproduced against a real
+        install.
+    validations:
+      required: true
+
+  - type: input
+    id: toolchain
+    attributes:
+      label: Toolchain
+      description: Output of `rustc --version`.
+      placeholder: rustc 1.96.0 (ac68faa20 2026-05-25)
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: Output of `git rev-parse HEAD`.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: lint-and-hygiene
+    attributes:
+      label: Checks
+      description: Confirm the automated checks are clean, so the report is not one of them.
+      options:
+        - label: "`cargo fmt --all --check` is clean."
+          required: false
+        - label: "`cargo clippy --workspace --all-targets -- -D warnings` is clean."
+          required: false
+        - label: "`tools/check_public.sh` and `tools/check_layers.sh` pass."
+          required: false
+
+  - type: markdown
+    value: |
+      Do not open a pull request to fix this if you wrote the code that has the bug.
+      The implementer does not write the test that proves the fix. See the role
+      separation rule in the implementation guide.

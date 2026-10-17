@@ -1,6 +1,9 @@
-# Build output.
-/target/
+# Build output. The pattern is `/target*/` and not `/target/` because several
+# agents set their own CARGO_TARGET_DIR to avoid sharing a target directory, and
+# a literal `/target/` let one of those through into the index once already.
+/target*/
 /target-agent-*/
+/target-verify/
 
 # Game data and private references. These live outside the repository
 # (see ../_rw_private). The patterns here are a second line of defence:

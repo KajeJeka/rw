@@ -1,0 +1,154 @@
+name: Feature request
+description: Propose a subsystem, a format, or a change of scope.
+title: "[Feature]: "
+body:
+  - type: markdown
+    value: |
+      This project has a fixed scope: an engine that reads the data of Fallout 1
+      version 1.1 and runs it with the verified behaviour of the original program. Most
+      requests that arrive here fall into one of three categories, and it helps to say
+      which before anything else:
+
+      - **A subsystem the design already calls for and nobody has written yet.**
+        Everything is in scope; it just needs a specification first.
+      - **A behaviour change.** Fidelity is not negotiable here. A change that makes the
+        engine differ from the original for the player's benefit needs an owner decision
+        and a deviation list entry, not a pull request.
+      - **Something outside the vanilla target.** Fallout 2 rules, Community Edition
+        additions, widescreen and the High Resolution Patch are out of scope.
+
+  - type: checkboxes
+    id: no-game-files
+    attributes:
+      label: I have not attached any game file, and I will not.
+      options:
+        - label: >
+            I confirm this request contains no game data, no archive, no executable, no
+            art, no map, no script and no screenshot of the original game, and I will
+            not add any later.
+          required: true
+
+  - type: checkboxes
+    id: no-decompiled-source
+    attributes:
+      label: I have not pasted decompiled or decompilation source.
+      options:
+        - label: >
+            I confirm that nothing in this request is copied or pasted from decompiled
+            or decompilation source, in whole or in part, and that I have not
+            transcribed identifier names, comments or structure from it.
+          required: true
+
+  - type: checkboxes
+    id: own-copy
+    attributes:
+      label: I have my own copy of the game.
+      options:
+        - label: >
+            I am using my own legally obtained copy of Fallout 1. I understand this
+            project does not ship, host or distribute game data and requires the player
+            to supply their own install.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area
+      description: Pick the closest subsystem. "Other" is fine if none fit.
+      options:
+        - Archives and compression
+        - Byte order and readers
+        - Executable tables
+        - Sprites
+        - Prototypes
+        - Maps
+        - Palettes, fonts and text
+        - Audio
+        - Movies
+        - Game rules and combat
+        - Script virtual machine
+        - Pathfinding and movement
+        - World map
+        - Rendering
+        - Input and interface
+        - Saves
+        - Build, CI and tooling
+        - Documentation
+        - other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Which kind of request
+      options:
+        - A subsystem the design already calls for
+        - A specification or claim that needs writing
+        - A behaviour change that would deviate from the original
+        - Something outside the vanilla target
+        - Build, tooling or developer experience
+        - Documentation
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: >
+        What you cannot do today, and what you would be able to do after. Describe the
+        capability, not the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: >
+        If you know how the original behaves, describe that in your own words and say
+        how you know. If you do not, say so: an unverified proposal is fine, an invented
+        one is not.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >
+        What would let someone else check this without your machine. A synthetic input
+        built in code, an algebraic identity, a byte offset you can cite, or a clear
+        statement that the claim is currently unverified.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alt
+    attributes:
+      label: Alternatives
+      description: What else could achieve the same result.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: dependencies
+    attributes:
+      label: Dependencies
+      options:
+        - label: >
+            This needs a third-party crate. I understand every dependency needs a line
+            in the dependency ledger with its licence and its reason, and has to pass
+            the licence check.
+          required: false
+        - label: >
+            This would change a protected path (a gate test, a specification, the
+            tooling, the lint table, an expected count, or the CI configuration), which
+            needs the owner's approval before it starts.
+          required: false
+        - label: >
+            This changes behaviour away from the original. I understand that needs an
+            owner decision and a deviation list entry, not just a review.
+          required: false
