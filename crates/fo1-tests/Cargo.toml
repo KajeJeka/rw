@@ -1,0 +1,10 @@
+[package]
+name = "fo1-tests"
+description = "FO1_DATA gate harness and independent test-author reference decoders."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

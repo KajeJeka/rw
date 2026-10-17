@@ -1,0 +1,11 @@
+# PROTECTED file. Changing this needs the owner's approval.
+#
+# The workspace lint table denies unwrap, expect, panic and indexing
+# outright. Gate tests must be able to use them: a gate test that cannot
+# assert a panic is malformed input, or index a known-length array, cannot
+# do its job. Production code stays fully denied.
+
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true

@@ -1,0 +1,24 @@
+# PROTECTED file. Gate test count floors.
+#
+# tools/gate.sh step 7 compares the counts the run produced against this file.
+# A LOWER number than this file fails the gate. These values may only rise,
+# and only with the owner's approval (guide: The gate script).
+
+# Crate name -> number of tests that must run in its gate surface.
+#
+# Phase 1 floors. The test-author role sets the real numbers once the gate
+# tests exist; the orchestrator raises them before M0/M1 closes.
+synthetic_endian 4
+synthetic_lzss 9
+synthetic_dat 7
+install_archive 7
+install_plaintext 5
+install_exe_tables 8
+
+# Tests the default `cargo test --workspace` run must execute. CI runs only
+# these. Nothing here may read FO1_DATA.
+min_synthetic_tests 25
+
+# Tests the `cargo test --workspace -- --ignored` run must execute against the
+# player's install. These are open items until FO1_DATA is present.
+min_install_tests 20

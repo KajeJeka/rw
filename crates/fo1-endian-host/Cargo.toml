@@ -1,0 +1,10 @@
+[package]
+name = "fo1-endian-host"
+description = "Total reader for the little-endian executable byte order layer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

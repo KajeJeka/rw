@@ -1,0 +1,17 @@
+# Force LF in the working tree on every platform. tools/*.sh must run under
+# any shell, and CRLF breaks them. `text=auto` still lets git detect binaries
+# and leave them alone.
+* text=auto eol=lf
+
+# Markdown, shell and toml are always text and always LF.
+*.md   text eol=lf
+*.sh   text eol=lf
+*.toml text eol=lf
+*.rs   text eol=lf
+*.hex  text eol=lf
+tools/layers.txt text eol=lf
+Cargo.lock        text eol=lf
+
+# The implementation guide is the project's specification. Never rewrite its
+# bytes, whatever line endings it ships with.
+"RUSTY WASTELAND Engine Implementation Guide, Revision 2.md" -text

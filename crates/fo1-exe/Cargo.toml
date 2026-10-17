@@ -1,0 +1,13 @@
+[package]
+name = "fo1-exe"
+description = "PE section reader and the data tables compiled into falloutw.exe."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+fo1-endian-host.workspace = true

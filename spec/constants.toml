@@ -1,0 +1,24 @@
+# PROTECTED file. The constants ledger.
+#
+# Every number the specification fixes lives here with its id, its value, its
+# evidence tag and the claim id that introduced it. A test compares each public
+# constant in the code with this ledger.
+#
+# Evidence tags, highest trust first:
+#   CONFIRMED AGAINST ORIGINAL BINARY  checked against falloutw.exe bytes or real game data
+#   CONFIRMED IN COMMUNITY EDITION ONLY
+#   VERSION DIFFERENCE IDENTIFIED
+#   UNVERIFIED                          not enough evidence; do not guess, isolate it
+#
+# The ledger changes only with new evidence and an owner decision.
+#
+# Populated by the test-author role in wave 2, merged from
+# docs/spec/<subsystem>.constants.toml. Do not hand-edit from an implementation.
+
+[[constant]]
+id = "PLACEHOLDER-DO-NOT-USE"
+value = 0
+unit = "none"
+evidence = "UNVERIFIED"
+claim = "NONE"
+note = "Ledger seed row. Replaced wholesale by the test-author role."

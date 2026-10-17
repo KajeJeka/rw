@@ -1,0 +1,10 @@
+[package]
+name = "fo1-bigendian"
+description = "Total reader for the big-endian asset byte order layer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

@@ -1,0 +1,17 @@
+# PROTECTED file. Workspace layering, consumed by tools/check_layers.sh.
+#
+# Band 0  leaf codecs and primitive readers. No workspace dependency.
+# Band 1  format readers built on band 0.
+# Band 9  dev-only test harness. No runtime crate may depend on it.
+#
+# The rule is: a crate may depend only on crates in a strictly lower band.
+# Adding a crate to this workspace without adding it here fails the gate.
+# That failure is deliberate: a new crate must have a declared layer before
+# anything can depend on it.
+
+0  fo1-bigendian
+0  fo1-endian-host
+0  fo1-lzss
+1  fo1-dat
+1  fo1-exe
+9  fo1-tests

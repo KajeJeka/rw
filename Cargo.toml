@@ -1,0 +1,82 @@
+# RUSTY WASTELAND workspace root.
+#
+# The lint table below is a PROTECTED file. Changing it needs the owner's
+# approval, because every "total reader" and "explicit arithmetic" guarantee
+# in the engineering philosophy is enforced from here (guide: Engineering
+# philosophy, "How each principle is checked").
+#
+# The root package is `rw-gate`. It carries no library code. Its only purpose
+# is to own `tests/gates/`, the gate tests written by the test-author role.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/fo1-bigendian",
+    "crates/fo1-endian-host",
+    "crates/fo1-lzss",
+    "crates/fo1-dat",
+    "crates/fo1-exe",
+    "crates/fo1-tests",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+publish = false
+# The licence is an open owner decision (guide: Open items, "Project"). It is
+# deliberately NOT declared here: `publish = false` means cargo never needs it,
+# and declaring one we have not chosen would be worse than declaring none.
+
+[workspace.dependencies]
+fo1-bigendian = { path = "crates/fo1-bigendian" }
+fo1-endian-host = { path = "crates/fo1-endian-host" }
+fo1-lzss = { path = "crates/fo1-lzss" }
+fo1-dat = { path = "crates/fo1-dat" }
+fo1-exe = { path = "crates/fo1-exe" }
+fo1-tests = { path = "crates/fo1-tests" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+cast_possible_truncation = "deny"
+cast_sign_loss = "deny"
+cast_possible_wrap = "deny"
+allow_attributes_without_reason = "deny"
+
+[profile.release]
+overflow-checks = true
+
+[package]
+name = "rw-gate"
+description = "Gate-test host for RUSTY WASTELAND. Owns tests/gates/ only."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+fo1-bigendian.workspace = true
+fo1-endian-host.workspace = true
+fo1-lzss.workspace = true
+fo1-dat.workspace = true
+fo1-exe.workspace = true
+fo1-tests.workspace = true

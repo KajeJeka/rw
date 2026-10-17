@@ -1,0 +1,36 @@
+# Build output.
+/target/
+/target-agent-*/
+
+# Game data and private references. These live outside the repository
+# (see ../_rw_private). The patterns here are a second line of defence:
+# `tools/check_public.sh` fails the build on any tracked file that
+# .gitignore should have excluded.
+/analysis/
+/vendor/
+/_rw_private/
+
+# Game extensions. May only ever exist as synthetic fixtures built in code
+# or as .hex text files. tools/check_public.sh enforces this over the tree.
+/*.dat
+/*.exe
+/*.frm
+/*.fr0
+/*.fr1
+/*.fr2
+/*.fr3
+/*.fr4
+/*.fr5
+/*.pal
+/*.pro
+/*.map
+/*.int
+/*.acm
+/*.mve
+/*.aaf
+/*.gam
+/*.msg
+/*.sav
+
+# The lock file is committed (guide: dependencies must be reproducible).
+!/Cargo.lock
