@@ -1328,8 +1328,8 @@ fn the_install_fingerprint_is_exact() {
     let install = install();
 
     assert_eq!(
-        install.exe().sha256,
-        REFERENCE_EXE_SHA256,
+        install.exe().sha256.as_deref(),
+        Some(REFERENCE_EXE_SHA256),
         "falloutw.exe sha256"
     );
     assert_eq!(
@@ -1371,15 +1371,19 @@ fn the_install_fingerprint_is_exact() {
         EXE_FILE_NAME,
         "the executable fingerprint names its own role"
     );
+    // The archives are checked by size alone. Their fingerprint therefore
+    // carries no digest: hashing 496 MB of archive per test bought nothing,
+    // because the digests were never compared against anything. The size is
+    // the whole check.
     assert_eq!(
-        install.master_dat().sha256.len(),
-        64,
-        "MASTER.DAT is fingerprinted with a whole file sha256"
+        install.master_dat().sha256,
+        None,
+        "MASTER.DAT is checked by size, not by digest"
     );
     assert_eq!(
-        install.critter_dat().sha256.len(),
-        64,
-        "CRITTER.DAT is fingerprinted with a whole file sha256"
+        install.critter_dat().sha256,
+        None,
+        "CRITTER.DAT is checked by size, not by digest"
     );
     assert!(
         install.has_loose_data_dir(),

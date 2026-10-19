@@ -34,6 +34,12 @@ REPORT_DIR='target/gate'
 REPORT="$REPORT_DIR/report.md"
 TOTAL_STEPS=10
 
+# The dev-only band in tools/layers.txt. A crate in it is the proof (the
+# reference decoders, the gate test host), not the code being proved, so the
+# mutation step does not mutate it. The same number is in
+# tools/check_layers.sh, which fails the gate if the two disagree.
+HARNESS_BAND=9
+
 STEP_NAME=()
 STEP_STATE=()
 STEP_DETAIL=()
@@ -231,7 +237,11 @@ fi
 # ---------------------------------------------------------------------------
 
 if [ -z "$FAILED_AT" ]; then
-    run_step 4 '4 workspace tests' cargo test --workspace || true
+    # Release mode. The release profile keeps the overflow checks on, so a
+    # wrapping arithmetic bug fails here instead of passing in a debug build
+    # and breaking in a shipped binary. It is also twenty times faster, which
+    # is what makes the install suite bearable.
+    run_step 4 '4 workspace tests' cargo test --workspace --release || true
 fi
 
 # ---------------------------------------------------------------------------
@@ -248,7 +258,7 @@ if [ -z "$FAILED_AT" ]; then
     else
         printf 'FO1_DATA=%s\n' "$FO1_DATA"
         # The constants live in the harness, so the harness is what checks them.
-        if cargo test -p fo1-tests -- --ignored --nocapture; then
+        if cargo test -p fo1-tests --release -- --ignored --nocapture; then
             step '5 install fingerprint' pass 'FO1_DATA is set and the fingerprint matched'
             INSTALL_OK=1
         else
@@ -264,7 +274,7 @@ fi
 
 if [ -z "$FAILED_AT" ]; then
     if [ "$INSTALL_OK" -eq 1 ]; then
-        run_step 6 '6 ignored tests' cargo test --workspace -- --ignored || true
+        run_step 6 '6 ignored tests' cargo test --workspace --release -- --ignored || true
     else
         skip_step 6 '6 ignored tests' 'step 5 did not pass, so there is no install to test against'
     fi
@@ -367,11 +377,77 @@ if [ -z "$FAILED_AT" ]; then
     elif ! have cargo-mutants; then
         skip_step 10 '10 mutation testing' 'cargo-mutants is not installed'
     else
-        if cargo mutants --workspace; then
-            step '10 mutation testing' pass 'no surviving mutants'
-        else
-            step '10 mutation testing' fail 'a mutant survived'
+        # The crates under test are the readers: every workspace member that
+        # is not in the dev-only band. The guide says to run mutation on the
+        # readers, and the layer file is where the project declares which
+        # crates those are. The dev-only band holds the reference decoders
+        # and the gate test host, which are the proof, not the thing being
+        # proved, and mutating them measures the proof rather than the code.
+        MUTANT_CRATES=()
+        while read -r band crate; do
+            case "$band" in
+                ''|'#'*) continue ;;
+            esac
+            [ "$band" = "$HARNESS_BAND" ] && continue
+            MUTANT_CRATES+=(-p "$crate")
+        done < tools/layers.txt
+
+        if [ "${#MUTANT_CRATES[@]}" -eq 0 ]; then
+            printf 'FAIL tools/layers.txt names no crate to mutate\n'
+            step '10 mutation testing' fail 'tools/layers.txt names no crate to mutate'
             FAILED_AT='10 mutation testing'
+        else
+            # The gate tests live in the `rw-gate` package and the crates
+            # under test carry their own unit tests. BOTH have to run:
+            # cargo-mutants runs the tests of the mutated crate by default, and
+            # `--test-package` REPLACES that with the named package's tests,
+            # which drops the mutated crate's own unit tests. On fo1-exe that
+            # is the difference between 148 and 68 surviving mutants.
+            #
+            # `--test-workspace true` runs every test in the workspace, so the
+            # gate tests and the crates' own unit tests both grade each
+            # mutant.
+            #
+            # `--profile release` builds the mutant and runs the tests the way
+            # the gate runs everything else, and the release profile keeps the
+            # overflow checks on.
+            MUTANTS_LOG="$REPORT_DIR/mutants.log"
+            MUTANTS_STATUS=0
+            cargo mutants \
+                "${MUTANT_CRATES[@]}" \
+                --test-workspace true \
+                --profile release \
+                --no-shuffle \
+                -j "${RW_MUTANTS_JOBS:-4}" \
+                --timeout 1200 \
+                > "$MUTANTS_LOG" 2>&1 || MUTANTS_STATUS=$?
+            cat "$MUTANTS_LOG"
+
+            # A run that caught nothing has proved nothing. cargo-mutants exits
+            # zero when it finds no surviving mutant, and it also exits zero
+            # when it tested no mutant at all, so the exit status alone cannot
+            # tell "the suite is strong" from "the suite never ran". The count
+            # of caught mutants is what tells them apart.
+            MUTANTS_CAUGHT=$(sed -n 's/^[0-9][0-9]* mutants\? tested.*[^0-9]\([0-9][0-9]*\) caught.*/\1/p' \
+                "$MUTANTS_LOG" | tail -1)
+            MUTANTS_TESTED=$(sed -n 's/^\([0-9][0-9]*\) mutants\? tested.*/\1/p' "$MUTANTS_LOG" | tail -1)
+
+            if [ "$MUTANTS_STATUS" -ne 0 ]; then
+                step '10 mutation testing' fail 'a mutant survived'
+                FAILED_AT='10 mutation testing'
+            elif [ -z "$MUTANTS_CAUGHT" ]; then
+                printf 'FAIL the run reported no caught count, so nothing was proven\n'
+                step '10 mutation testing' fail 'the run reported no caught count'
+                FAILED_AT='10 mutation testing'
+            elif [ "$MUTANTS_CAUGHT" -eq 0 ]; then
+                printf 'FAIL %s mutant(s) tested and 0 caught, so the suite proved nothing\n' \
+                    "${MUTANTS_TESTED:-0}"
+                step '10 mutation testing' fail "0 of ${MUTANTS_TESTED:-0} mutants caught"
+                FAILED_AT='10 mutation testing'
+            else
+                step '10 mutation testing' pass \
+                    "$MUTANTS_CAUGHT of ${MUTANTS_TESTED:-?} mutants caught, none survived"
+            fi
         fi
     fi
 fi

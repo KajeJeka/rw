@@ -1002,8 +1002,8 @@ fn install_reference_build_is_admitted_and_carries_the_expected_digest() {
     // The harness fingerprints the whole file, so the digest and the size below
     // are measured, not restated.
     assert_eq!(
-        install.exe().sha256.as_str(),
-        EXPECTED_SHA256_HEX,
+        install.exe().sha256.as_deref(),
+        Some(EXPECTED_SHA256_HEX),
         "EXETBL-001: the install's executable hashes to the reference digest"
     );
     assert_eq!(
