@@ -16,10 +16,10 @@ allow = [
     "Unicode-3.0",
     "Unlicense",
     "MPL-2.0",
-    # The workspace's own seven crates. Every manifest declares
-    # LicenseRef-Proprietary because SPDX has no identifier for "this project
-    # has not chosen a licence yet", which is the honest state. See LICENSE.
-    "LicenseRef-Proprietary",
+    # The workspace's own seven crates. Every manifest declares MIT, which the
+    # owner chose for our own code. See LICENSE and the guide's "Licence and
+    # contact". MIT covers this code only; it grants no rights to Fallout or
+    # to the Community Edition, which the repository contains none of.
 ]
 confidence-threshold = 0.9
 

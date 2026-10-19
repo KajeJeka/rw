@@ -33,7 +33,7 @@ The project owner can overturn any decision below. Until then the agent follows 
 | Save format | Write a new self contained versioned format with a CRC32. Read only the original header. | No real original save has been parsed. The original has no integrity check. |
 | Audio | Separate crate. The game runs silent until the ACM codec is solved. | The ACM container is solved. The codec is not. |
 | Fallout 2 and CE features | Out of scope. | CE added Fallout 2 rules. A vanilla port must not inherit them. |
-| Repository | Public on GitHub. It holds no game data, no CE source and no private paths. | See Publication rules. |
+| Repository | Public on GitHub under the MIT licence. It holds no game data, no CE source and no private paths. | See Publication rules. |
 | Unsafe code | Forbidden in every crate. | No part of the design needs it. The LZSS ring buffer is plain indexed code. |
 | Milestone closure | A milestone closes only when the gate script passes with the player's install present. | See Verification and anti faking. |
 
@@ -56,7 +56,7 @@ The repository is public from its first commit. Git keeps everything ever commit
 - `falloutw.exe`, patch files and installers.
 - CE source, CE comments, CE test data, a CE checkout, a CE submodule or a vendor directory holding it.
 - Private research notes: raw analysis reports, disassembly listings, hex dumps of the executable and any note that quotes CE source.
-- Local paths, user names, machine names and personal email addresses.
+- Local paths, user names, machine names and personal email addresses. One public contact address is allowed, in README.md and CONTRIBUTING.md only.
 - Tokens and secrets.
 
 Keep private material outside the working tree. Use one sibling directory for the player's install, set by `FO1_DATA`, and one for private references, set by `FO1_REF`. The references hold the CE checkout and the research notes. Neither sits inside the repository, so `git add` cannot reach them. Any plan that places `vendor/` or `analysis/` inside the repository must move them out before the first push.
@@ -71,11 +71,30 @@ Separate facts from expression. A fact is an offset, a field layout, a constant 
 - Tables that live in the executable come from the player's own copy at run time, or from a local cache under `target/`.
 - Every spec file starts with a provenance line that names its sources: binary, game data, or CE for behaviour. It quotes nothing.
 
-The reason is the licence. CE uses the Sustainable Use License 1.0. It is not an open source licence and it limits distribution of derivative work to free non commercial use. A project that copies CE could not carry an ordinary open source licence. This guide is not legal advice. The owner should take advice on the repository licence and on trademarks before the first push.
+The reason is the licence. CE uses the Sustainable Use License 1.0. It is not an open source licence and it limits distribution of derivative work to free non commercial use. A project that copies CE could not carry an ordinary open source licence. This guide is not legal advice. The owner chose the MIT licence for our own code, which works only because no CE code is copied. The owner should take advice on trademarks before the first push.
 
 ### Naming
 
 The README says the project is unofficial, has no link to the rights holders and needs the player's own copy of the game. The repository holds no original art, logos, icons or audio. Issue and pull request templates tell contributors never to attach game files and to confirm that they copied no CE source.
+
+### Licence and contact
+
+- The repository uses the MIT licence. `LICENSE` holds the standard MIT text with the line "Copyright (c) 2026 RUSTY WASTELAND contributors". No personal name appears in it.
+- Every `Cargo.toml` sets `license = "MIT"`, and `deny.toml` accepts that licence for the workspace crates.
+- Anyone may read, download, modify and copy the code into a new repository. MIT asks only that the licence text travels with the code.
+- Game data and CE code are not ours, and MIT does not cover them. The README says so.
+- People who want to help write to cttkajejeka@gmail.com with the subject "I WANT TO HELP IN RUSTY WASTELAND". This is the only personal address in the repository. It appears only in `README.md` and `CONTRIBUTING.md`, and `tools/check_public.sh` allows exactly that string in those two files.
+- A contribution is accepted under the MIT licence. The pull request template asks the contributor to confirm that the change holds no game data and no CE source.
+
+### README
+
+The README serves two readers.
+
+- A player learns what to own, which build is supported, how to build and run the game after version 0.9, and how to check an install today.
+- A developer learns the crate map, the reading order, how to run each test suite, the rules of the repository and how to add a feature.
+- It states the current status. Instructions that describe unfinished work are marked as planned.
+- The agent runs every command before it writes it into the README. The completion report lists them.
+- It carries the notice that the project is unofficial, that no game data is included and that the MIT licence covers only our code.
 
 ### Hygiene checks
 
@@ -97,7 +116,7 @@ Failure messages print offsets, lengths and hashes. They never print file conten
 
 The facts here come from analysis of the reference executable, the game data and a read of CE. The raw research notes stay private. This guide restates the findings in its own words. Rank every claim by its evidence tag and let byte evidence overrule prose.
 
-The reference build has SHA-256 `444257e5fe91e6c333261aecadacb1f46dbba0319fa0b187de89f36914f32272`. The build stamp "Nov 11 1997 14:59:39" sits at file offset 0xD270C.
+The reference build has SHA-256 `444257e5fe91e6c333261aecadacb1f46dbba0319fa0b187de89f36914f32272`. The build stamp "Nov 11 1997 14:59:39" sits at file offset 0xD270C. The executable is 1,243,136 bytes.
 
 When sources disagree, the higher source wins. The order is the original binary, then real game data, then CE, then the notes. Do not average two sources. Write down why you chose one and add the ruling to the table below.
 
@@ -179,9 +198,9 @@ Each ruling ends in a test, so the agent can overturn it with data.
 
 ## Architecture
 
-The engine is a Rust workspace of 16 crates and one test harness. Each crate owns one subsystem and one test surface.
+The engine is a Rust workspace of 18 crates and one test harness. Each crate owns one subsystem and one test surface.
 
-&#91;embedded content: workspace layers · 16 crates and a test harness\]
+&#91;embedded content: workspace layers · 18 crates and a test harness\]
 
 Dependencies point down. A crate never uses a crate in a higher band. `tools/check_layers.sh` reads `cargo metadata` and fails the gate on a violation.
 
@@ -195,6 +214,8 @@ Dependencies point down. A crate never uses a crate in a higher band. `tools/che
 - `fo1-game` owns the loop. The order of one tick is not specified. Two parts are known. Each program runs a burst of 10 script instructions per tick, and a move replays one step per tick. Derive the rest from CE's main loop behaviour and write the spec before milestone M8.
 - `fo1-tests` holds the `FO1_DATA` harness and the test author's independent reference decoders. It is a dev dependency only and no runtime crate depends on it. Its path is protected.
 - Fallout 2 and CE additions stay out of every crate.
+
+Phase 1 added two crates to the first plan. `fo1-lzss` holds the LZSS decoder in the lowest layer, so the reference decoder in `fo1-tests` shares no code with it and `fo1-dat` stays a container reader. `fo1-exe` maps the PE image of `falloutw.exe` and reads the seven tables through `fo1-endian-host`. The root package `rw-gate` owns the gate tests under `tests/gates/`. The layer script numbers the bands: band 0 has no dependencies, band 1 depends on band 0 and band 9 is test only.
 
 ## Engineering philosophy
 
@@ -263,6 +284,8 @@ allow-expect-in-tests = true
 allow-indexing-slicing-in-tests = true
 allow-panic-in-tests = true
 ```
+
+These relaxations do not reach the top level helper functions of an integration test file. Each gate file restates the exemptions it needs with `#![allow(..., reason = "...")]` at its top, which the `allow_attributes_without_reason` lint requires anyway. Gate files are protected. The production lint table stays fully denied.
 
 The crates `fo1-dat`, `fo1-script`, `fo1-combat` and `fo1-save` also put `#![deny(clippy::arithmetic_side_effects)]` at the top of their `lib.rs`, because a crate that opts into the workspace table cannot add lints of its own. The lint table and `clippy.toml` are protected files. See Verification and anti faking.
 
@@ -427,6 +450,10 @@ Change the code. These moves are never allowed to turn a test green:
 
 An agent that believes the test is wrong stops. It reports the bytes, the offsets and the spec claim, and it waits for the owner.
 
+A fix to a gate test is reviewed by a session that did not write the fix, even when the fix is correct. The reviewer sees the test diff, the spec claim and the byte evidence. An implementer never verifies its own change to a protected file.
+
+A test that builds a bad input first proves that the bad input differs from the good one. One digest test computed a flipped byte with an operator that yields a value and never stores it. The bad input equalled the good one, so the refusal could never fail. Assert the difference before you use the input.
+
 ### Completion report
 
 Every finished task ends with a report. A claim of success without it does not count.
@@ -487,9 +514,9 @@ The layout is a two level tree.
 
 - The file opens with a 16 byte header of four u32 values. They are the directory count, a capacity, a size field that is 0 at the root, and a dead pointer. Ignore the capacity and the pointer.
 - The directory names follow. Each is one length byte and that many characters.
-- One block per directory follows, in the same order. A block has the same 16 byte header with the size field set to 16. Its entries come next.
+- One block per directory follows, in the same order. A block has a 16 byte header. Its first field is the entry count of that directory, not the directory count. Its third field is 16, the width of the four u32 trailer of each entry, and not the size of an entry record, which varies with the name length. Its entries come next.
 - An entry is a length byte, the name, and four u32 values: flags, absolute offset, uncompressed size and compressed size.
-- Nothing separates the blocks. Paths use backslashes. Uppercase a path before you look it up.
+- Nothing separates the blocks. Paths use backslashes. Uppercase a path before you look it up. A directory named "." holds files at the archive root, so path composition keys on that name and never on a block being first. The only block in CRITTER.DAT is named ART\\CRITTERS and all 5,459 of its paths keep that prefix.
 
 Two rules protect the reader.
 
@@ -662,6 +689,8 @@ Hit chance, skills, perks, traits, combat AI and world map travel are not specif
 ### Data compiled into the executable
 
 Several tables live in `falloutw.exe` and not in the game data files. They belong to the executable layer, so every i32 in them is little endian. Read them from the player's own executable at start up, or extract them once into a local cache under `target/` that stays out of the repository. Look them up by virtual address through the PE section headers. Check the file hash first. The reference build has SHA-256 `444257e5fe91e6c333261aecadacb1f46dbba0319fa0b187de89f36914f32272`. Stop with a clear message on any other build. Do not copy table initialisers out of CE.
+
+Mapping a virtual address needs care. Every section in the reference build declares a virtual size of 0, so the textbook containment rule rejects all seven table addresses. Test containment with the raw fields instead. A section is file backed only when its raw data pointer and its raw size are both nonzero. The uninitialised data section has a large raw size beside a zero pointer, and a size only test would return the DOS header bytes `MZ` as table data. Bound every read to the section that contains it and not merely to the file.
 
 | Table | Address | Layout |
 | --- | --- | --- |
@@ -1256,6 +1285,12 @@ Do M0 and M1 together. M0 takes a few hours and M1 depends on it. These notes ch
 - M5. The port writes one self contained file with a CRC. It does not write `MAPS\*.SAV` beside `SAVE.DAT`.
 - M6. The heuristic runs on screen coordinates and the search has no 800 step cap. Follow the pathfinding section.
 
+A milestone is closed or it is open. Tests that are green while a gate step is skipped leave it open. The mutation job and a full run of `tools/gate.sh` are part of closing M0 and M1 like any other milestone.
+
+### Release naming
+
+After M8 closes, the workspace version is 0.9.0 and the release is called 0.9 ALL MUTANTS ALLOWED. The Git tag is `v0.9.0` and the release title is the full name. Cargo needs a numeric version, so the words live in the release title and the README only. The name is cosmetic. A surviving mutant is still allowed only through `mutants-allow.md`.
+
 ## Open items
 
 Each row is a question the analysis leaves open. Settle it before the code that depends on it. When you settle one, add the ruling and its evidence tag to the rulings table in Source material and trust.
@@ -1293,7 +1328,7 @@ Each row is a question the analysis leaves open. Settle it before the code that 
 | Audio | The `adecode` licence | Read it before any use |
 | Media | `.MVE` playback has no crate and no milestone | Owner decision |
 | Install | Other installs differ from the reference install, so the gate constants need new measurements. | Measure each install and add a separate fingerprint |
-| Project | Repository licence, trademark wording and whether to commit hash manifests of the player's files | Owner decision after legal advice |
+| Project | Trademark wording and whether to commit hash manifests of the player's files | Owner decision after advice |
 
 ## Rules for the agent
 

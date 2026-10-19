@@ -1,17 +1,21 @@
-No licence has been selected for this repository.
+MIT License
 
-That is a deliberate open decision, not an oversight. See the "Licence" section of
-README.md for why, and note in particular that the clean-room rule this project is built
-under exists because the Community Edition is published under a licence that is not an
-open source licence and that restricts distribution of derivative work. Choosing a
-licence before legal advice is taken risks choosing one this repository is not eligible
-for.
+Copyright (c) 2026 RUSTY WASTELAND contributors
 
-Until the owner selects a licence, and until the owner has taken legal advice on it, no
-rights are granted in the contents of this repository. Nothing here is licensed for use,
-copying, modification or redistribution. You have no permission to do any of those.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-When a licence is chosen it will replace this file, and that choice needs the owner's
-decision.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-Nothing in this file is legal advice.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

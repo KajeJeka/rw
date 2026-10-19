@@ -4,11 +4,11 @@ version = 4
 
 [[package]]
 name = "fo1-bigendian"
-version = "0.1.0"
+version = "0.9.0"
 
 [[package]]
 name = "fo1-dat"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "fo1-bigendian",
  "fo1-lzss",
@@ -16,26 +16,26 @@ dependencies = [
 
 [[package]]
 name = "fo1-endian-host"
-version = "0.1.0"
+version = "0.9.0"
 
 [[package]]
 name = "fo1-exe"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "fo1-endian-host",
 ]
 
 [[package]]
 name = "fo1-lzss"
-version = "0.1.0"
+version = "0.9.0"
 
 [[package]]
 name = "fo1-tests"
-version = "0.1.0"
+version = "0.9.0"
 
 [[package]]
 name = "rw-gate"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "fo1-bigendian",
  "fo1-dat",

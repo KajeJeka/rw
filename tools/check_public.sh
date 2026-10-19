@@ -11,7 +11,8 @@
 #   4. a term from $FO1_PRIVATE_TERMS,
 #   5. an identifier from $FO1_REF/ce-identifiers.txt,
 #   6. an integer literal array of more than 64 elements,
-#   7. a tracked file that .gitignore should have excluded.
+#   7. a tracked file that .gitignore should have excluded,
+#   8. the one public contact address outside README.md and CONTRIBUTING.md.
 #
 # Failure messages print the path relative to the repository root, the byte
 # offset of the match, the match length and a hash. They never print more than
@@ -75,6 +76,33 @@ is_exempt_from_text_rules() {
         docs/superpowers/*) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+# --- the one public contact address ------------------------------------------
+#
+# Guide: Publication rules, "Licence and contact". Exactly one personal address
+# is allowed to be published, and only in the two files that tell a reader how
+# to reach the owner about contributing. Everywhere else it is a leak, because
+# the private term list may not cover every address that ever appears.
+#
+# The literal is assembled from fragments so that this script's own bytes do
+# not contain it: a rule that flags its own rule text is a rule people disable.
+#
+# The allowed files are named here rather than exempted by the text-rule
+# exemption above, because that exemption is about *describing* the rules. These
+# two files *use* the address, which is exactly what the rule permits.
+CONTACT_DOMAIN="cttkajejeka"
+CONTACT_TLD="gmail.com"
+CONTACT_ADDRESS="${CONTACT_DOMAIN}@${CONTACT_TLD}"
+RID_CONTACT='publication-rules/contact-address'
+CONTACT_ALLOWED_FILES="README.md CONTRIBUTING.md"
+
+contact_file_is_allowed() {
+    local candidate
+    for candidate in $CONTACT_ALLOWED_FILES; do
+        [ "$1" = "$candidate" ] && return 0
+    done
+    return 1
 }
 
 # --- reporting ---------------------------------------------------------------
@@ -323,6 +351,15 @@ while IFS= read -r -d '' path; do
         done <<EOF
 $array_report
 EOF
+    fi
+
+    # rule 8, the one public contact address outside its two permitted files
+    if ! contact_file_is_allowed "$path"; then
+        while IFS= read -r offset; do
+            [ -n "$offset" ] || continue
+            report_match "contact-address" "$path" "$offset" \
+                "$CONTACT_ADDRESS" "$file_sha" "$RID_CONTACT"
+        done < <(grep -aboF -e "$CONTACT_ADDRESS" -- "$path" 2>/dev/null | cut -d: -f1 || true)
     fi
 
     # rule 4, private term list

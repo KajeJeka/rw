@@ -1,161 +1,118 @@
 # RUSTY WASTELAND
 
-An unofficial, clean-room reimplementation engine for Fallout 1 version 1.1, in Rust.
+RUSTY WASTELAND is an engine for Fallout 1, written in Rust. It reads the data files of a copy of the game that you own and runs the game on modern systems. It is not affiliated with or endorsed by Bethesda or any rights holder. Fallout is a trademark of its owner.
 
-**This project is unofficial. It has no link to, and no association with, the rights
-holders of Fallout. It is not endorsed by them. You need your own copy of the game to
-use it.**
-
-## What is in this repository
-
-No game data. No Community Edition source. No private paths. No original art, logos,
-icons or audio. The engine reads the player's own install at run time; the repository
-ships nothing that came off a game disc.
-
-This is enforced, not promised. `tools/check_public.sh` runs inside the gate and in
-continuous integration and fails the build on a file with a game extension, a file over
-256 KB, a drive-letter path, a name from the owner's private term list, an identifier
-from the Community Edition identifier list, an integer literal array long enough to be
-a pasted table dump, or any tracked file that `.gitignore` should have excluded.
-
-## What this is
-
-A Rust engine that runs the **data** of the game with the **behaviour** of the original
-program.
-
-Those are two different commitments and the difference is deliberate.
-
-Same data:
-
-- Bit-exact reading of the two archives and every asset format inside them.
-- The compiled script files run with the original instruction semantics.
-- The tables compiled into the reference executable are read from the player's own
-  copy, in the correct byte order.
-
-Same rules, same script results:
-
-- The random number generator, the stat model, the damage pipeline, the critical hit
-  and critical failure tables, experience and levels, and the pathfinder reproduce the
-  verified behaviour.
-
-Not the same bugs:
-
-- The original's buffer defects -- unbounded buffers, a path helper with no length
-  parameter, unclamped configuration values and an unframed save stream -- all share
-  one root cause. Reproducing them is one decision, not four, and this project does not
-  make it.
-- A quirk that the game's rules or its own scripts depend on is reproduced and pinned by
-  a test. A defect that only wastes memory or corrupts a file is not.
-
-"Fidelity" here means the rules decide behaviour. Where the engine deliberately differs
-from the original, the difference is on a deviation list with an owner decision behind
-it.
+The first complete version will be called **0.9 ALL MUTANTS ALLOWED**. Its Cargo version is 0.9.0 and its tag is `v0.9.0`.
 
 ## Status
 
-Phase 1 is the archive foundation. **It is not finished and the engine does not run.**
+Milestones 0 and 1 are implemented. The engine reads the DAT archives, decompresses their entries and reads the seven data tables stored in the original executable. It cannot start the game yet. Milestones 2 to 8 are open. Version 0.9 is released when milestone 8 passes its gate.
 
-What exists today:
+| Milestone | Content | State |
+|---|---|---|
+| M0 | DAT archives and LZSS | Implemented |
+| M1 | Byte readers, executable tables, assets | Implemented |
+| M2 | World and renderer | Open |
+| M3 | Combat | Open |
+| M4 | Scripts | Open |
+| M5 | Saves | Open |
+| M6 | Pathfinding and world map | Open |
+| M7 | Audio | Open |
+| M8 | Assembly, one playable map | Open |
 
-- The DAT container is specified in `docs/spec/dat.md`.
-- The LZSS decoder is specified in `docs/spec/lzss.md`, with the ring geometry, the
-  termination rule and the hand-computed vectors pinned.
-- The two byte-order layers are specified in `docs/spec/endian.md`.
-- The tables compiled into the executable are specified in `docs/spec/exe-tables.md`.
+## What you need
 
-What does not exist yet:
+You need your own legal copy of Fallout 1 for Windows, version 1.1. The repository contains no game data and never will. The engine checks the SHA-256 of `falloutw.exe` against the supported build and stops with an error on any other build.
 
-- The implementations. The specs are written; the crates that satisfy them have not
-  landed. There are no working readers.
-- The gate tests. They are being written now, and until they exist there is no proof of
-  anything.
-- Everything past the archive layer: sprites, prototypes, maps, the script virtual
-  machine, rules, rendering, audio, saves, input.
+You also need the current stable Rust toolchain from https://rustup.rs.
 
-Do not read the existence of a specification as a claim that the corresponding code
-works. It does not yet.
+## Run the game
 
-## Repository layout
+These steps apply once milestone 8 is complete.
 
-Six crates exist. The full design has sixteen crates and one test harness; the rest do
-not exist yet and are not stubbed into pretending otherwise.
+1. Copy your game folder anywhere on your disk. It must contain `falloutw.exe`, `MASTER.DAT` and `CRITTER.DAT`.
+2. Set `FO1_DATA` to that folder.
+3. Build and start.
 
-| Crate | Band | Owns |
-| --- | --- | --- |
-| `fo1-bigendian` | 0 | The big-endian byte order layer used by the asset formats. A total reader: returns `Result`, never panics, never reads past the end. |
-| `fo1-endian-host` | 0 | The little-endian byte order layer used by the tables inside the reference executable. Deliberately a separate crate from the above, so a wrong-endian read cannot happen silently through a shared code path. |
-| `fo1-lzss` | 0 | The LZSS decoder: the 4096 byte ring, the token loop, the termination and overrun rules. Never truncates, never pads, never defaults to a length. |
-| `fo1-dat` | 1 | The DAT archive container: the directory tree, the entry records, the payload mode table, and block chains. |
-| `fo1-exe` | 1 | The PE section reader for the reference executable, and the data tables compiled into it. Refuses any build whose digest is not the reference. |
-| `fo1-tests` | 9 | The `FO1_DATA` gate harness and the test author's independent reference decoders. Dev dependency only. No runtime crate depends on it. |
-
-The root package, `rw-gate`, carries no library code. It exists to own `tests/gates/`,
-where the gate tests live, so that the proof is outside every subsystem's own tree.
-
-`tools/layers.txt` declares the dependency bands. Dependencies point down only, and
-`tools/check_layers.sh` fails the build on a crate that reaches sideways or upward.
-
-## Building
-
-```sh
-cargo build --workspace
-cargo test --workspace
+```
+git clone https://github.com/KajeJeka/rusty-wasteland
+cd rusty-wasteland
+export FO1_DATA=/path/to/your/fallout
+cargo run --release -p fo1-app
 ```
 
-Point the engine and the gate harness at your own install with the `FO1_DATA`
-environment variable, naming the directory that contains `falloutw.exe`,
-`MASTER.DAT` and `CRITTER.DAT`. The harness fingerprints that install against the
-reference build and refuses anything else rather than relaxing a constant.
+On Windows PowerShell, set the variable with `$env:FO1_DATA`, pointing it at that folder.
 
-Continuous integration runs **only the synthetic tests**. It never holds game data, it
-never downloads game data, and it has no network access. The tests that need a real
-install are marked `#[ignore]` and are run by the owner on their own machine through
-`tools/gate.sh`, which is the only entry point that counts as a full gate.
+The engine reads your files and never writes to them. Save files go to the directory that the engine prints at startup.
 
-The toolchain is pinned. Use the Rust version named in `Cargo.toml`
-(`rust-version`) or newer with the same toolchain generation; the CI workflow pins one
-exact version.
+## Run the tests
 
-## Contributing
+Three suites need no game files and finish in seconds.
 
-Two rules, and they are not stylistic.
+```
+cargo test --test synthetic_endian
+cargo test --test synthetic_lzss
+cargo test --test synthetic_dat
+cargo test -p fo1-tests
+```
 
-1. **Never attach game files.** Not to an issue, not to a pull request, not as a
-   fixture, not as a hex dump of an asset you decoded. The hygiene script fails the
-   build if a tracked file looks like game data, and a leak into the git history is
-   permanent -- git keeps everything ever committed, so a later delete does not undo
-   it.
-2. **Confirm in your pull request that you copied no Community Edition source.** The
-   project's licence position depends on it. The Community Edition is licensed under a
-   licence that is not open source and that restricts distribution of derivative work,
-   so a single copied function could change what this repository is allowed to be.
+Three suites check the code against your real game files. They are slow and need `--ignored`.
 
-Beyond that: write the specification before the code, give every claim an id and an
-evidence tag, and make every expected value come from somewhere other than the code
-under test.
+```
+export FO1_DATA=/path/to/your/fallout
+cargo test --test install_archive -- --ignored --test-threads=1
+cargo test --test install_plaintext -- --ignored --test-threads=1
+cargo test --test install_exe_tables -- --ignored --test-threads=1
+```
+
+All six take about 25 minutes. Keep `--test-threads=1`. The archive tests hold hundreds of megabytes each.
+
+To run every check that a change must pass, use `tools/gate.sh`. It writes a report to `target/gate/report.md`.
+
+## How the code is organized
+
+The workspace has 18 crates in layers. A crate may depend only on crates in a lower layer. `tools/layers.txt` holds the rule and `tools/check_layers.sh` enforces it.
+
+| Layer | Crates |
+|---|---|
+| Foundation | fo1-core, fo1-path, fo1-bigendian, fo1-endian-host, fo1-lzss |
+| Data | fo1-dat, fo1-exe, fo1-assets |
+| Rules and world | fo1-world, fo1-combat, fo1-pathfind, fo1-script, fo1-worldmap |
+| Output and storage | fo1-render, fo1-audio, fo1-save |
+| Assembly | fo1-game, fo1-app |
+| Test only | fo1-tests |
+
+Only `fo1-app` touches the platform. Every other crate takes bytes in and returns values or errors. This keeps the rules testable and deterministic.
+
+The asset files use big endian numbers. The tables inside the executable use little endian. Two separate crates read them so that one cannot be used for the other by mistake.
+
+Read these in order if you want to change something.
+
+1. The Implementation Guide in the repository root. It holds every decision and the evidence behind it.
+2. `docs/spec/<crate>.md`. It defines each claim that the tests cite by id.
+3. `tools/layers.txt`. It shows what may depend on what.
+4. The matching file in `tests/gates/`. It shows what the crate must satisfy.
+
+## Code rules
+
+The root `Cargo.toml` forbids `unsafe`, `unwrap`, `expect`, `panic`, direct indexing and lossy casts in runtime crates. Readers return errors for bad input. They never truncate. The workspace has no third party dependencies, so keep it that way.
+
+Tests and code have separate authors. Do not edit these paths in a change that also changes the code they grade: `tests/`, `crates/fo1-tests/`, `docs/spec/`, `spec/`, `tools/`, `.github/`, `clippy.toml`, `deny.toml` and `expected_counts.toml`. If a test looks wrong, open an issue with the evidence.
+
+Every test names its claim id and its oracle class. An oracle is the source of the expected value. A test whose expected value comes from the code under test does not count.
+
+The script `tools/check_public.sh` rejects absolute paths and private names in tracked files. Run it before each commit.
+
+## Contribute
+
+Send an email to cttkajejeka@gmail.com with the title `I WANT TO HELP IN RUSTY WASTELAND`. Say what you want to work on. Reply time varies.
+
+The address is public. Use it only for this purpose.
+
+## Do not post game data
+
+Do not add game files, hashes of your files, text extracted from them or code from other engines to issues or pull requests. See `CONTRIBUTING.md`.
 
 ## Licence
 
-**No licence has been selected.** That is a deliberate open decision and it is not an
-oversight.
-
-The reason it is open is the clean-room rule. The Community Edition is a decompilation
-of the reference build and is published under a licence that is not an open source
-licence and that limits distribution of derivative work to free non-commercial use. If
-any part of its code, comments, names or structure reached this repository, the project
-could not carry an ordinary open source licence. The clean-room rule exists to keep
-that from happening, which means the licence has to be chosen on the basis of what this
-repository actually contains.
-
-Until a licence is chosen, nothing in this repository is granted any rights. See
-`LICENSE`.
-
-The owner should take legal advice on the repository licence, and separately on
-trademark wording, before the first public push. Nothing in this file is legal advice.
-
-## Trademarks
-
-Fallout is a trademark of its rights holders. This repository is not affiliated with,
-endorsed by, sponsored by or approved by those rights holders. It is a fan project. Any
-reference to the original game is nominative: it identifies what this engine is
-compatible with, and nothing more.
+MIT. See `LICENSE`. You may use, copy, modify and redistribute the code, including in a repository you own. The licence covers this code only. It grants no rights to Fallout or its data.
