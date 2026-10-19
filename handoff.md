@@ -143,7 +143,134 @@ and will skip without it.
 
 ---
 
-## 3. How the codebase works
+## 3. File tree
+
+62 tracked files. Sizes are in bytes; the gate tests are large because each
+assertion carries an inline explanation of why it holds.
+
+```
+.
+├── RUSTY WASTELAND Engine Implementation Guide, Revision 2.md   105,888
+├── README.md                                                       7,838
+├── handoff.md                                                     13,326
+├── LICENSE                                                          883
+│     No licence has been chosen. Every manifest carries
+│     LicenseRef-Proprietary, SPDX's marker for exactly that.
+│
+├── Cargo.toml                                                     3,447
+│     Workspace root. Owns [workspace.lints] (the protected deny table),
+│     the six [[test]] gate targets, and the rw-gate package.
+├── Cargo.lock                                                       653
+│     Frozen. Zero third-party dependencies, so it holds only the members.
+├── clippy.toml                                                      454
+│     allow-*-in-tests for the harness. Does NOT reach an integration
+│     test file's top-level helpers; see section 1.
+├── deny.toml                                                      1,378
+├── expected_counts.toml                                           1,172
+│     Test count floors. Protected; may only rise, with owner approval.
+├── mutants-allow.md                                                 680
+│     Approved surviving mutants. Currently empty.
+├── .gitignore / .gitattributes                                   929/600
+│     Ignores /target*/ — see the warning in section 2.
+│
+├── src/lib.rs                                                       480
+│     rw-gate's library. Carries no code; exists so the root package is
+│     a valid cargo member that owns tests/gates/.
+│
+├── crates/
+│   ├── fo1-bigendian/          band 0
+│   │   └── src/lib.rs          11,227   bounds-checked BE readers
+│   ├── fo1-endian-host/        band 0
+│   │   └── src/lib.rs          11,766   bounds-checked LE readers
+│   ├── fo1-lzss/               band 0
+│   │   └── src/lib.rs          21,972   4096-byte ring, decoder, free fns
+│   ├── fo1-dat/                band 1   -> bigendian, lzss
+│   │   └── src/lib.rs          30,784   archive container + entry lookup
+│   ├── fo1-exe/                band 1   -> endian-host
+│   │   ├── src/lib.rs          51,788   PE mapping, read_va, 7 tables
+│   │   └── src/sha256.rs       13,788   private SHA-256 for the build
+│   │                                  gate. Duplicated from fo1-tests on
+│   │                                  purpose: a runtime crate may not
+│   │                                  depend on band 9.
+│   └── fo1-tests/              band 9   dev-only, no runtime crate may use
+│       ├── src/lib.rs           2,460   crate doc + re-exports
+│       ├── src/harness.rs      14,419   Install: resolves FO1_DATA,
+│       │                                  fingerprints it, hands out slices
+│       ├── src/ref_lzss.rs     13,204   oracle class 4: reference LZSS
+│       ├── src/ref_dat.rs      17,436   oracle class 4: reference tree walk
+│       ├── src/canary.rs       18,901   13 canary + vector tests
+│       └── src/sha256.rs       12,296   reference SHA-256
+│
+├── tests/gates/                the six gate targets; see section 4
+│   ├── synthetic_endian.rs     87,601   16 tests, runs in CI
+│   ├── synthetic_lzss.rs       84,987   18 tests, runs in CI
+│   ├── synthetic_dat.rs        82,377   16 tests, runs in CI
+│   ├── install_archive.rs      50,015   12 tests, needs FO1_DATA
+│   ├── install_plaintext.rs    24,299    6 tests, needs FO1_DATA
+│   └── install_exe_tables.rs  114,144   22 tests, needs FO1_DATA
+│
+├── tools/
+│   ├── gate.sh                 17,238   the 10-step pre-push gate
+│   ├── check_public.sh         12,888   no absolute paths in tracked files
+│   ├── check_trace.sh           9,148   claim -> test mapping
+│   ├── check_layers.sh          8,993   reads tools/layers.txt
+│   ├── lint_tests.sh            9,249   banned patterns in tests
+│   ├── lint_rules.sh            8,357   banned patterns in production
+│   └── layers.txt                 605   the banding contract
+│
+├── docs/
+│   ├── deps.md                  2,471
+│   ├── spec/
+│   │   ├── endian.md           38,159   + endian.constants.toml
+│   │   ├── lzss.md             31,003   + lzss.constants.toml
+│   │   ├── dat.md              32,301   + dat.constants.toml
+│   │   ├── exe-tables.md       49,098   + exe-tables.constants.toml
+│   │   └── trace.md            24,730   claim -> test map
+│   └── superpowers/plans/
+│       └── 2026-10-17-phase1-archive-foundation.md   24,493
+│
+├── spec/
+│   └── constants.toml          71,609   merged 251-row constant ledger,
+│                                  the union of the four .constants.toml
+│                                  fragments. Single source of truth.
+│
+└── .github/
+    ├── CODEOWNERS                2,244
+    ├── dependabot.yml              520
+    ├── workflows/ci.yml          3,429
+    ├── PULL_REQUEST_TEMPLATE.md  4,037
+    └── ISSUE_TEMPLATE/
+        ├── bug_report.yml        5,324
+        └── feature_request.yml   5,285
+```
+
+### Reading order
+
+If you are new to the repo, in this order:
+
+1. `RUSTY WASTELAND Engine Implementation Guide...md` — the authority. It is
+   103 KB, so search it rather than reading it straight through.
+2. `docs/spec/<crate>.md` — the contract for the crate you are about to touch.
+   Every claim id the gate tests cite is defined here.
+3. `tools/layers.txt` — 18 lines, tells you what may depend on what.
+4. The matching `tests/gates/*.rs` — what the crate has to satisfy.
+
+### Where things are duplicated, and why
+
+Two duplications look like mistakes and are not:
+
+- **SHA-256 exists twice** (`crates/fo1-exe/src/sha256.rs` and
+  `crates/fo1-tests/src/sha256.rs`, ~13 KB each). `fo1-tests` is band 9 and no
+  runtime crate may depend on it. Sharing the code would mean letting a
+  production crate depend on its own test oracle.
+- **LZSS is implemented twice** (`crates/fo1-lzss/` and
+  `crates/fo1-tests/src/ref_lzss.rs`). Same reason: the reference decoder is
+  oracle class 4, written independently from the spec. It exists to disagree
+  with the implementation if the implementation is wrong.
+
+---
+
+## 4. How the codebase works
 
 ### What is being built
 
@@ -273,7 +400,7 @@ Zero third-party dependencies. `Cargo.lock` is frozen.
 
 ---
 
-## 4. What is not done
+## 5. What is not done
 
 - **Mutation testing never ran.** `cargo-mutants` re-runs the suite per mutant;
   at ~25 minutes per install-gate run this is not feasible in one session.
@@ -287,7 +414,7 @@ Zero third-party dependencies. `Cargo.lock` is frozen.
   `LicenseRef-Proprietary` — SPDX's marker for "not chosen yet". This satisfies
   `cargo deny` honestly; it is an open owner decision.
 
-## 5. Where to start
+## 6. Where to start
 
 1. Read the guide's *Verification and anti faking* section. It is the reason
    the fake digest-gate test was worth hunting down.
