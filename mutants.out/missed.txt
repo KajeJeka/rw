@@ -1,3 +1,0 @@
-crates/fo1-exe/src/lib.rs:225:9: replace <impl fmt::Display for ExeError>::fmt -> fmt::Result with Ok(Default::default())
-crates/fo1-exe/src/lib.rs:513:9: replace StatLimit::field0 -> i32 with 0
-crates/fo1-exe/src/lib.rs:518:9: replace StatLimit::field1 -> i32 with 0

@@ -37,3 +37,8 @@
 
 # The lock file is committed (guide: dependencies must be reproducible).
 !/Cargo.lock
+
+# cargo-mutants writes its output here. It holds mutant diffs and per-mutant
+# logs, which are build output and must never be tracked.
+/mutants.out/
+/mutants.out.old/
