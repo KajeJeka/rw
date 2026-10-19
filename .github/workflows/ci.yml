@@ -45,7 +45,7 @@ jobs:
       # is the right follow-up, but it must be a SHA this project has verified, not
       # one copied from memory. Left as an open item for the owner.
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install the pinned toolchain
         # Pinned to an exact version, not to `stable`. The project's rust-version is
