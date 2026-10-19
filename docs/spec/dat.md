@@ -511,7 +511,11 @@ impl DatArchive {
     /// This is tree order, which is not physical order (DAT-012).
     pub fn entries(&self) -> &[EntryRecord];
 
-    /// Looks up an already-uppercased, already-backslashed path.
+    /// Looks up a path the caller has already uppercased and already spelled
+    /// with backslashes. This performs no case folding of any kind: it does not
+    /// call `to_uppercase`, it does not compare with `eq_ignore_ascii_case`, and
+    /// it consults no locale. `None` means the uppercase form is not in the
+    /// archive (DAT-031, DAT-032).
     pub fn find(&self, upper_path: &str) -> Option<&EntryRecord>;
 }
 
@@ -595,6 +599,79 @@ pub fn compose_path(directory: &str, name: &str) -> String {
 A reader that needs a lookup table will want the index built once; that is an
 internal choice and the spec does not constrain it beyond correctness.
 
+### DAT-031 — The caller uppercases the path; `find` folds nothing
+
+`UNVERIFIED`
+
+`DatArchive::find` takes a path the **caller** has already uppercased. The
+precondition lives at the call site, not inside the parser, which is why the
+parameter is named `upper_path`.
+
+The guide states this in one sentence in the *DAT archives* section:
+"Uppercase a path before you look it up." The rule is put on whoever looks the
+path up, so this spec puts it on the caller and not on the reader.
+
+The byte facts behind it are measured and belong to DAT-010: every stored
+directory name and every stored entry name in both archives is already
+uppercase. What is not measured is how the original engine treats a lowercased
+argument, because nothing in either archive supplies one.
+
+### DAT-032 — Lookup is an exact match against the stored uppercase path
+
+`UNVERIFIED`
+
+The other half of DAT-031, and the reason the uppercase step belongs to the
+caller rather than to the parser.
+
+The independent reference walker this spec was checked against compares paths
+case-exactly, and it is the behaviour `find` is specified to match: a lookup
+succeeds only on the stored uppercase form, byte for byte, and returns `None`
+otherwise. Case folding inside the parser would not be a harmless convenience.
+It could not turn a miss into a hit on this install, because every stored name
+is already uppercase, so it would only ever change what a caller's mistake
+looks like: a folded lookup silently misses a path that is present, or matches
+one the caller did not mean.
+
+So the rule has one direction. Uppercase once, at the call site, and pass the
+result to `find`. `find` does not uppercase, does not lowercase, does not
+normalise separators and does not consult a locale table.
+
+### DAT-033 — A directory block whose field 0 is zero parses
+
+`UNVERIFIED`
+
+`DatArchive::parse` accepts a block header whose field 0 is `0`: a directory
+that declares no entries at all.
+
+This is not a measured behaviour of the original engine, and it is not claimed
+as one. Field 0 is the entry count at a block (DAT-005), so zero is a count of
+zero, and a block describing nothing is not a block describing something that
+runs off the end of the archive. The measured arithmetic supports the reading:
+the sum of field 0 over the 66 measured block headers equals the entry total
+exactly (section 1.3), and a zero term breaks no part of that.
+
+No byte evidence in either archive shows a zero field 0 at a block, and none
+shows the original rejecting one. So the parser accepts it, the behaviour is
+pinned here, and it stays an open item rather than a rule. See section 3.
+
+### DAT-034 — An entry whose name length is zero parses
+
+`UNVERIFIED`
+
+`DatArchive::parse` accepts an entry whose length byte is `0`, producing an
+entry whose name is empty.
+
+Again this is a port decision, not a measurement. An entry is a length byte,
+the name, and four u32 values (DAT-009), so a zero length is a zero-length name
+and the four u32 trailer still follows at its computed offset. The record is
+the minimum seventeen bytes and nothing is truncated; a reader that treated a
+zero length as malformed would be rejecting a record its own layout rules
+permit.
+
+No entry in either measured archive has a zero name length, so neither
+acceptance nor rejection is established by any byte evidence. The parser
+accepts it and the behaviour is an open item, not a rule. See section 3.
+
 ---
 
 ## 3. What this spec does NOT settle
@@ -612,8 +689,18 @@ internal choice and the spec does not constrain it beyond correctness.
   both archives and that chains consume exactly their compressed size. I did not
   prove that distinct entries occupy disjoint regions, so the reader must not
   assume it either.
-- **Empty archives, zero-directory archives, zero-entry blocks.** No measured
-  archive or block exercises these. The parse contract for them is not specified.
+- **Empty archives and zero-directory archives.** No measured archive or block
+  exercises these. The parse contract for a zero-entry block is DAT-033 and for a
+  zero-length entry name is DAT-034; nothing here settles an archive with no
+  directories at all.
+- **Whether a zero field 0 or a zero-length name ought to be rejected.** DAT-033
+  and DAT-034 record both as accepted, because no byte evidence establishes
+  either as malformed. Adding a rejection now would be an unmeasured claim: it
+  would assert engine behaviour that nothing in either archive shows, and it
+  would turn a parse that succeeds on unknown input into a failure nobody can
+  reproduce from the data. The guide's rule for exactly this situation is to
+  isolate the question and list it as open, which is what section 2 does. The
+  question stays open until someone measures an archive that carries either.
 - **A block chain whose decoded output overshoots mid-chain.** The rule is to
   error (DAT-024); whether the original engine clamps instead was not measured and
   is deliberately not reproduced.
@@ -623,3 +710,38 @@ internal choice and the spec does not constrain it beyond correctness.
 - **Order of blocks within a chain.** Chains are read in stored order because
   that is the only order in which the output reaches the declared size. Nothing
   suggests a chain is reordered or seekable.
+
+---
+
+## 4. Source disagreements
+
+A place for a measured fact that disagrees with one of my sources. Nothing here
+is resolved by editing a source: the disagreement is recorded so that a later
+reader can see both numbers and decide which one their change is about.
+
+### The guide's archive gate attributes the corpus chain count to MASTER.DAT
+
+`CONFIRMED AGAINST ORIGINAL BINARY`
+
+The guide's *Archive gate* checklist reads "MASTER.DAT has 4,787 raw entries
+and 20,456 chain entries." The first half is right and the second half is the
+corpus total, not a MASTER.DAT count. Measured, per archive:
+
+| Quantity | MASTER.DAT | CRITTER.DAT | Corpus total |
+| --- | --- | --- | --- |
+| Mode `0x20`, stored entries | 4,787 | 0 | 4,787 |
+| Mode `0x40`, chain entries | 14,997 | 5,459 | 20,456 |
+
+The guide's own *DAT archives* mode table is where the two numbers come from,
+and there they are already separated: `0x20` is given as "4,787, all in
+MASTER.DAT" and `0x40` is given as a bare `20,456` with no archive attributed.
+The checklist attached the corpus figure to the archive named in the same
+sentence.
+
+Nothing in this spec depends on the attribution. DAT-016 and DAT-026 state the
+measured split, section 1.3 tabulates it per archive, and the gate asserts
+14,997 and 5,459 separately rather than the sum. The guide is the owner's
+document and is not amended here.
+
+The note exists so the disagreement is visible instead of silently resolved. A
+later reader who finds the checklist should not "fix" this spec to match it.

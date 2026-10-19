@@ -133,17 +133,17 @@ note = "Every chain entry in both archives was decoded end to end. produced == u
 id = "LZSS-C022"
 value = 52229
 unit = "LZSS blocks"
-evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+evidence = "UNVERIFIED"
 claim = "LZSS-013"
-note = "Blocks whose input ran out part-way through a control byte, 85.5% of 61,070. The mid control byte stop is the normal termination, not an edge case. A decoder that insists on eight tokens per control byte errors on these."
+note = "Blocks whose input ran out part-way through a control byte, 85.5% of 61,070. The mid control byte stop is the normal termination, not an edge case. A decoder that insists on eight tokens per control byte errors on these. The measurement is real, but it is not observable through the interface this phase froze: ChainStats exposes only blocks, lzss_blocks and raw_blocks, and the reference decoder returns only bytes, so nothing can tell a mid control byte stop from a boundary stop without a second decoder. Tagged UNVERIFIED for that reason and not because the number is in doubt. No gate test claims this row."
 
 [[constant]]
 id = "LZSS-C023"
 value = 8841
 unit = "LZSS blocks"
-evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+evidence = "UNVERIFIED"
 claim = "LZSS-013"
-note = "Blocks whose input ran out exactly on a control byte boundary. LZSS-C022 + LZSS-C023 = LZSS-C020."
+note = "Blocks whose input ran out exactly on a control byte boundary. LZSS-C022 + LZSS-C023 = LZSS-C020. Not observable through the frozen interface for the reason given in LZSS-C022: counting where each block stopped needs a second decoder that this phase does not have, so no gate test claims this row either."
 
 [[constant]]
 id = "LZSS-C024"

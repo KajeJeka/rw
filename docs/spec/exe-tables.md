@@ -77,19 +77,47 @@ reference build and it breaks the usual mapping rule:
 
 > **Mapping.** `file_offset = PointerToRawData + (va - ImageBase - VirtualAddress)`
 > and a virtual address is contained in a section only while
-> `0 <= (va - ImageBase - VirtualAddress) < SizeOfRawData`.
+> `0 <= (va - ImageBase - VirtualAddress) < SizeOfRawData`, and only in a
+> section whose `PointerToRawData` is nonzero as well.
 
 Containment must be tested against `SizeOfRawData`. A reader that validates
-against `VirtualSize` rejects every address in this build, and a reader that
-does not check `SizeOfRawData` at all will happily walk into `.idata`.
+against `VirtualSize` rejects every address in this build.
 
-`.bss` has `PointerToRawData == 0` and must be skipped: it is uninitialised
-data and contributes no file bytes. A reader that only tests
-`RawPointer != 0` is relying on a coincidence; testing `RawSize` is the rule.
+### A section is file-backed only when both raw fields are nonzero
+
+The second condition is not a formality. `.bss` declares
+`SizeOfRawData = 0x00172C00`, a large and nonzero size, together with
+`PointerToRawData = 0`. A containment test that looks at the size alone
+accepts `.bss`, maps any address in it to file offset `0 + delta`, and a read
+at `0x00540000` — the first address `.bss` owns — hands back the first bytes
+of the file, the DOS header `MZ`, as though they were data. Both conditions
+must hold, so `.bss` is skipped: it is uninitialised data and contributes no
+file bytes. Testing one raw field is relying on a coincidence of this build;
+testing both is the rule.
+
+### A read is bounded by its section, not only by the file
+
+A length is checked against the containing section's raw extent before it is
+checked against the extent of the file, and a length that would cross the
+section boundary is an error.
+
+That check has to be there, and it has to be about the section, because
+`DGROUP` raw data ends at file offset `0x11DA00` — which is exactly where
+`.idata` raw data begins. A read that starts inside `DGROUP` and overruns its
+own section lands in `.idata`'s file bytes and returns plausible garbage
+without raising anything. The last byte of `DGROUP` reads; two bytes from the
+last byte of `DGROUP` do not.
+
+Crossing a boundary the reader has already been told about is the defect class
+the guide forbids. Its *Engineering philosophy* rule 3 is a total reader that
+"never indexes past the end", and the guide's executable-layer section makes
+the section the unit of lookup, so the end that matters is the end of the
+mapped region, not the end of the file.
 
 All seven tables live in `DGROUP`. The highest byte any table reaches is file
-offset `0xE9124`, and `DGROUP` raw data ends at `0x11DA00`, so every table is
-inside the section with room to spare.
+offset `0xE9123`; `0xE9124` is the exclusive end, one byte past anything the
+tables own. `DGROUP` raw data ends at `0x11DA00`, so every table is inside the
+section with room to spare.
 
 ### File offsets computed for the seven tables
 
@@ -428,8 +456,9 @@ correct**, for three independent reasons:
    recovers that.
 2. Every other table is internally consistent little endian. The critical
    record at `0xE534C` reads its message ids as `64 19 00 00` = 6,500 and
-   `88 13 00 00` = 5,000, plausible message ids; big endian would give
-   1,661,012 and 1,392,008.
+   `88 13 00 00` = 5,000, plausible message ids; the same four bytes read big
+   endian are `0x64190000` = 1,679,360,000 and `0x88130000` = 2,282,946,560,
+   which are not message ids at all.
 3. The hit location penalties read as small negative numbers (`-40`, `-60`)
    only in little endian. Big endian gives values above 2.5 billion.
 
@@ -567,6 +596,8 @@ const XP_THRESHOLD_COUNT: usize = 21;
 /// `virtual_size` is stored because the field exists in the file, but every
 /// section of the reference build declares 0, so containment is decided by
 /// `raw_size`. A reader that trusts `virtual_size` here accepts nothing.
+/// Containment additionally requires `raw_pointer != 0`, because `.bss`
+/// declares a nonzero `raw_size` beside a zero `raw_pointer`.
 #[derive(Clone, Copy)]
 pub struct SectionHeader {
     pub name: [u8; 8],
@@ -588,7 +619,11 @@ pub enum ExeError {
     Unmapped { va: u32 },
     /// The address arithmetic left the representable range.
     RangeOverflow { va: u32 },
-    /// The address maps to a section but the request runs past the file.
+    /// The address maps to a section, but the request does not fit inside the
+    /// region that section owns: it runs past the end of the section's raw
+    /// bytes, or past the end of the file. Both are the same refusal, because a
+    /// read that leaves its section must not return the next section's bytes
+    /// under this section's address.
     OutsideFile { offset: usize, len: usize },
     /// A record field fell outside the record that was read.
     FieldOutOfRange { offset: usize, field: &'static str },
@@ -609,7 +644,11 @@ impl fmt::Display for ExeError {
                 write!(f, "address arithmetic overflowed for 0x{va:08X}")
             }
             ExeError::OutsideFile { offset, len } => {
-                write!(f, "read of {len} bytes at file offset 0x{offset:X} runs past end of file")
+                write!(
+                    f,
+                    "read of {len} bytes at file offset 0x{offset:X} runs past the end of \
+                     its section or of the file"
+                )
             }
             ExeError::FieldOutOfRange { offset, field } => {
                 write!(f, "field {field} at file offset 0x{offset:X} is outside the record")
@@ -712,9 +751,19 @@ impl<'a> PeImage<'a> {
     /// Borrows `len` bytes at virtual address `va`.
     ///
     /// Containment is tested against `SizeOfRawData` because every section of
-    /// the reference build declares `VirtualSize == 0`.
+    /// the reference build declares `VirtualSize == 0`, and the read is bounded
+    /// by the containing section's raw extent before the file is consulted. A
+    /// length that would run past the section is an error, not a shorter read
+    /// and not a read that carries on into the next section's bytes.
     pub fn read_va(&self, va: u32, len: usize) -> Result<&'a [u8], ExeError> {
-        let start = self.file_offset(va)?;
+        let (header, delta, start) = self.translate(va)?;
+        let limit = usize::try_from(header.raw_size).map_err(|_| ExeError::RangeOverflow { va })?;
+        let span = delta
+            .checked_add(len)
+            .ok_or(ExeError::RangeOverflow { va })?;
+        if span > limit {
+            return Err(ExeError::OutsideFile { offset: start, len });
+        }
         let end = start.checked_add(len).ok_or(ExeError::RangeOverflow { va })?;
         // A total `get` keeps a short file an error rather than a panic.
         self.bytes.get(start..end).ok_or(ExeError::OutsideFile { offset: start, len })
@@ -725,11 +774,18 @@ impl<'a> PeImage<'a> {
         let rva = va.checked_sub(self.image_base)?;
         self.sections.iter().find(|header| match rva.checked_sub(header.virtual_address) {
             None => false,
-            Some(delta) => header.raw_size > 0 && delta < header.raw_size,
+            // File-backed means both raw fields are nonzero. `raw_size` alone
+            // admits `.bss`, which declares a nonzero size with a zero
+            // `raw_pointer` and would map to file offset `0 + delta`.
+            Some(delta) => {
+                header.raw_pointer != 0 && header.raw_size != 0 && delta < header.raw_size
+            }
         })
     }
 
-    fn file_offset(&self, va: u32) -> Result<usize, ExeError> {
+    /// The section that owns `va`, the offset of `va` inside that section, and
+    /// the file offset `va` maps to.
+    fn translate(&self, va: u32) -> Result<(&SectionHeader, usize, usize), ExeError> {
         let header = self.section_for(va).ok_or(ExeError::Unmapped { va })?;
         let rva = va.checked_sub(self.image_base).ok_or(ExeError::RangeOverflow { va })?;
         let delta = rva
@@ -737,7 +793,8 @@ impl<'a> PeImage<'a> {
             .ok_or(ExeError::RangeOverflow { va })?;
         let raw = usize::try_from(header.raw_pointer).map_err(|_| ExeError::RangeOverflow { va })?;
         let inside = usize::try_from(delta).map_err(|_| ExeError::RangeOverflow { va })?;
-        raw.checked_add(inside).ok_or(ExeError::RangeOverflow { va })
+        let start = raw.checked_add(inside).ok_or(ExeError::RangeOverflow { va })?;
+        Ok((header, inside, start))
     }
 }
 
@@ -1050,7 +1107,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 ### Interface decisions not literally in the guide
 
 The guide gives no Rust signatures for this layer, so every shape below is a
-spec-author decision. The three that matter:
+spec-author decision. The four that matter:
 
 1. **`PeImage<'a>` borrows its bytes.** The skeleton `pub fn read_va(&self, va:
    u32, len: usize) -> Result<&[u8], ExeError>` cannot name the lifetime of the
@@ -1067,6 +1124,16 @@ spec-author decision. The three that matter:
 3. **`PeImage::parse` rejects PE32+.** The optional header moves `ImageBase`
    from offset 28 to offset 24 in PE32+, so accepting it would misread the base
    and every address derived from it. Refusing is cheaper than a version check.
+4. **`read_va` bounds a read to its section, and the section overrun shares
+   `ExeError::OutsideFile`.** The guide gives no Rust signatures, so the variant
+   list is this spec's decision, and it keeps one variant for "the request does
+   not fit in the region that address names" rather than adding one. The two
+   events are not separable at this call anyway: `.rsrc` raw data ends exactly
+   at the end of the file, so a read past that section is past the file too, and
+   a test that demanded a distinct name would be asserting a distinction the
+   bytes do not make. What the variant's documentation and its message now say
+   is the part that matters: the bound is the section, and a read that leaves it
+   is refused rather than completed from the next section's bytes.
 
 `ExeError::BuildMismatch` carries the observed digest. A digest is a one way
 function of the file and reveals no table value, and without it the gate cannot
@@ -1128,5 +1195,11 @@ table content.
   EXETBL-001 only. A retail or patched build with a different digest is out of
   scope until someone measures it.
 - **Whether the DGROUP `VirtualSize == 0` quirk is universal.** It is confirmed
-  for this build. A reader should still use `SizeOfRawData`, because that is
-  correct in general rather than correct only here.
+  for this build. A reader should still use `SizeOfRawData` together with a
+  nonzero `PointerToRawData`, because that pair is correct in general rather
+  than correct only here.
+- **Whether the original engine also refuses a read that crosses a section
+  boundary.** The bytes show that this build's sections are laid out so a
+  crossing is easy to make and hard to notice; they cannot show what the
+  original reader did when handed an oversized length. The guide's total reader
+  rule forbids the behaviour, so it is specified here as an error.

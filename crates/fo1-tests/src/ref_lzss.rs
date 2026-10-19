@@ -206,8 +206,19 @@ impl RefLzss {
             });
         }
 
-        // A fresh ring per stream (LZSS-016).
-        let mut ring = vec![self.prefill_byte; self.ring_size];
+        // A fresh ring per stream (LZSS-016), and both halves of the prefill rule
+        // are honoured (LZSS-002): slots `0..write_start` hold `prefill_byte`,
+        // slots `write_start..ring_size` start as zero. The tail is not an
+        // implementation detail of the canonical parameters; it is what makes
+        // this oracle agree with the specification at a slot such as 4078, and a
+        // canary that varies `prefill_byte` must not be the only way to reach a
+        // zero in the tail.
+        //
+        // `resize` twice rather than filling the whole ring and then overwriting
+        // a range, because a range on a `Vec` is an index expression.
+        let mut ring: Vec<u8> = Vec::with_capacity(self.ring_size);
+        ring.resize(self.write_start, self.prefill_byte);
+        ring.resize(self.ring_size, 0);
         let mut write_index = self.write_start;
         let mut out: Vec<u8> = Vec::new();
 

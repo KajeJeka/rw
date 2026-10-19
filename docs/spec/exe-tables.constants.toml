@@ -1,8 +1,9 @@
 # Executable layer constants for `falloutw.exe`.
 #
 # Companion to docs/spec/exe-tables.md. Every number here was read from the
-# bytes of the reference build at
-#   _rw_private/analysis/target/falloutw.exe
+# bytes of the reference build, which is the copy of falloutw.exe in the
+# reference install. Its location on any one machine is deliberately not
+# written down here; the digest below identifies it.
 # SHA-256 444257e5fe91e6c333261aecadacb1f46dbba0319fa0b187de89f36914f32272
 # No Community Edition artefact was consulted, so no row below carries the tag
 # "CONFIRMED IN COMMUNITY EDITION ONLY".
@@ -101,7 +102,7 @@ value = 0
 unit = "bytes"
 evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
 claim = "EXETBL-002"
-note = "VirtualSize is 0 in every one of the 6 sections. Containment must therefore be tested against SizeOfRawData; a reader that validates against VirtualSize rejects every address in this build."
+note = "VirtualSize is 0 in every one of the 6 sections. Containment must therefore be tested against SizeOfRawData, and a section counts as file-backed only when PointerToRawData is nonzero as well; a reader that validates against VirtualSize rejects every address in this build, and one that tests SizeOfRawData alone admits .bss."
 
 [[constant]]
 id = "EXETBL-C015"
@@ -159,7 +160,7 @@ value = 314368
 unit = "bytes"
 evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
 claim = "EXETBL-002"
-note = "Section DGROUP SizeOfRawData 0x0004CC00. Raw data ends at file offset 0x11DA00; the highest byte any table reaches is 0xE9124."
+note = "Section DGROUP SizeOfRawData 0x0004CC00. Raw data ends at file offset 0x11DA00, which is exactly where .idata raw data begins, so a read is bounded by its section and not only by the file: the last byte of DGROUP reads and two bytes from it do not. The highest byte any table reaches is 0xE9123; 0xE9124 is the exclusive end, one byte past anything the tables own."
 
 # .bss: VA 0x00140000, VS 0, RawPtr 0x00000000, RawSize 0x00172C00
 [[constant]]
@@ -168,7 +169,15 @@ value = 1310720
 unit = "address"
 evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
 claim = "EXETBL-002"
-note = "Section .bss VirtualAddress 0x00140000, PointerToRawData 0. It contributes no file bytes and must be skipped rather than mapped to offset 0."
+note = "Section .bss VirtualAddress 0x00140000, PointerToRawData 0. It contributes no file bytes and is not file-backed, because both raw fields must be nonzero and this one's is zero. Skipped rather than mapped to offset 0."
+
+[[constant]]
+id = "EXETBL-C030"
+value = 1518592
+unit = "bytes"
+evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
+claim = "EXETBL-002"
+note = "Section .bss SizeOfRawData 0x00172C00. Nonzero, beside the zero PointerToRawData in EXETBL-C026, which is what makes file-backed a two condition test. A reader that admits .bss on its size computes file_offset = 0 + delta, so a read at 0x00540000, the first address .bss owns, returns the DOS header bytes 4D 5A as table data."
 
 # .idata / .reloc / .rsrc
 [[constant]]
@@ -1117,7 +1126,7 @@ value = 6500
 unit = "message-id"
 evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
 claim = "EXETBL-005"
-note = "Player critical record 0 message id 1, read from bytes 64 19 00 00 at file offset 0xE5360, which is record base 0xE534C plus 20. Independent confirmation that message ids are little endian: big endian would give 1661012."
+note = "Player critical record 0 message id 1, read from bytes 64 19 00 00 at file offset 0xE5360, which is record base 0xE534C plus 20. Independent confirmation that message ids are little endian: the same four bytes read big endian are 0x64190000, that is 1679360000, which is not a message id. The companion pair 88 13 00 00 folds to 0x88130000, that is 2282946560, the same way."
 
 [[constant]]
 id = "EXETBL-C932"

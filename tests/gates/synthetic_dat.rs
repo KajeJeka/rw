@@ -31,6 +31,19 @@
 //!       payloads
 //! ```
 
+// Gate tests are test code. `clippy.toml` sets `allow-unwrap-in-tests` and its
+// siblings, which cover a `#[cfg(test)]` module or a `#[test]` function body.
+// An integration test file's top-level helper functions sit outside both, so the
+// same exemptions are restated here, with reasons, for the gate files only. The
+// workspace lint table stays fully denied for the six production crates, which
+// are what the guide's "no panicking readers" guarantee is about.
+#![allow(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "gate-test helpers: the test author must be able to assert a panic and index fixed-width headers outside #[test] bodies"
+)]
 use fo1_bigendian::BigEndian;
 use fo1_dat::{
     decode_entry, decode_entry_with_stats, payload_mode, DatArchive, DatError, EntryRecord,
@@ -311,8 +324,10 @@ const NAMED_ENTRY_TREE_BYTES: usize =
 /// directory name.
 const NAME_LENGTH_GAP: usize = NAME_WIDTH_ART_CRITTERS - NAME_WIDTH_DOT;
 
-/// Root header field 0 of every one block fixture.
-const SINGLE_DIRECTORY: u32 = 1;
+/// Root header field 0 of every one block fixture, as the slice length it is
+/// compared against. `Archive::directories()` and the other `len()` accessors
+/// return `usize`, so the fixture count is held in that width here.
+const SINGLE_DIRECTORY_COUNT: usize = 1;
 
 /// Entries in every one block, one entry fixture.
 const SINGLE_BLOCK_ENTRIES: usize = 1;
@@ -494,8 +509,13 @@ const DIRECTORY_NAME_PAST_END: u8 = 200;
 /// `parse` must answer with a value, never a panic (DAT-017).
 const ROOT_HEADER_BITS: usize = HEADER_WIDTH * 8;
 
-/// Number of malformed trees `synthetic_malformed_trees_are_errors` builds.
-const MALFORMED_TREE_COUNT: usize = 4;
+/// Number of malformed trees `synthetic_malformed_trees_are_errors` builds. Every
+/// one of these claims more bytes than the buffer holds.
+const MALFORMED_TREE_COUNT: usize = 2;
+
+/// Number of trees `synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted`
+/// builds. The spec is silent on both, so they are accepted by ruling, not by rule.
+const ACCEPTED_TREE_COUNT: usize = 2;
 
 // --- fixture description ------------------------------------------------------
 
@@ -827,7 +847,7 @@ fn synthetic_chain_consumption(compressed_size: usize, extra_trailing: usize) ->
     let blocks = [SyntheticBlock::new(ROOT_DIRECTORY_NAME, &[entry])];
     let payloads = [chain_payload_raw_first()];
     let mut archive = synthetic_archive(&blocks, &payloads, CONSUMPTION_TREE_BYTES);
-    archive.extend(std::iter::repeat(0u8).take(extra_trailing));
+    archive.extend(std::iter::repeat_n(0u8, extra_trailing));
     archive
 }
 
@@ -1214,7 +1234,7 @@ fn synthetic_block_field_2_is_the_trailer_width_not_the_record_size() {
 
     assert_eq!(
         archive.directories().len(),
-        SINGLE_DIRECTORY,
+        SINGLE_DIRECTORY_COUNT,
         "directory count"
     );
     let entries = archive.entries();
@@ -1284,12 +1304,12 @@ fn synthetic_dot_directory_name_composes_no_prefix_and_a_named_one_does() {
     // difference between them is what that directory is called.
     assert_eq!(
         dot_archive.directories().len(),
-        SINGLE_DIRECTORY,
+        SINGLE_DIRECTORY_COUNT,
         "the dot archive has one directory"
     );
     assert_eq!(
         named_archive.directories().len(),
-        SINGLE_DIRECTORY,
+        SINGLE_DIRECTORY_COUNT,
         "the named archive has one directory too"
     );
     assert_eq!(
@@ -1786,11 +1806,7 @@ fn synthetic_stream_one_byte_short_and_one_byte_long_are_each_errors() {
         STREAM_OUTPUT.as_slice(),
         "the exact stream produces its two literals"
     );
-    assert_eq!(
-        exact_out.len(),
-        to_u32(STREAM_OUTPUT.len()),
-        "produced byte count"
-    );
+    assert_eq!(exact_out.len(), STREAM_OUTPUT.len(), "produced byte count");
 
     // One byte short. Two input bytes produce one literal, then the control byte has
     // no second literal behind it and the stream ends mid control byte (LZSS-013).
@@ -1899,7 +1915,7 @@ fn synthetic_tree_order_is_not_physical_order() {
 }
 
 /// claim: DAT-010
-/// oracle: class 6 (algebraic law: lookup on the uppercased path finds the same record, and an absent path is not an error)
+/// oracle: class 6 (algebraic law: the key that finds the record is the stored uppercase path; a key that is not the stored path, and an absent path, are both `None` rather than errors)
 #[test]
 fn synthetic_lookup_is_by_uppercased_path_and_an_absent_path_is_not_an_error() {
     let bytes = synthetic_lookup();
@@ -1914,24 +1930,27 @@ fn synthetic_lookup_is_by_uppercased_path_and_an_absent_path_is_not_an_error() {
     assert!(upper.is_some(), "the uppercase path is found");
     let upper_entry = upper.expect("uppercase lookup returned a record");
     assert_eq!(upper_entry.offset, 2_000, "the found entry's offset");
-
-    let lower = archive.find("art\\tiles\\grid000.frm");
-    assert!(lower.is_some(), "the lowercase path is found");
-    let lower_entry = lower.expect("lowercase lookup returned a record");
     assert_eq!(
-        lower_entry.path.as_str(),
         upper_entry.path.as_str(),
-        "same path"
+        "ART\\TILES\\GRID000.FRM",
+        "the key that finds a record is the record's own stored uppercase path"
     );
-    assert_eq!(lower_entry.offset, upper_entry.offset, "same offset");
-    assert_eq!(lower_entry.flags, upper_entry.flags, "same flags");
-    assert_eq!(
-        lower_entry.uncompressed_size, upper_entry.uncompressed_size,
-        "same uncompressed size"
+
+    // RULING: `find` takes an already-uppercased path and does not fold case
+    // internally. Uppercasing is the caller's job. Evidence: the implementation guide
+    // says "Paths use backslashes. Uppercase a path before you look it up." The
+    // parameter is named `upper_path` for the same reason, and the independent oracle
+    // `RefDatTree::find` is case-exact, which agrees.
+    //
+    // So a lowercase path is not the same entry: it misses, and a miss is `None`.
+    // Do NOT "fix" this back into a case-folding lookup.
+    assert!(
+        archive.find("art\\tiles\\grid000.frm").is_none(),
+        "a lowercase path is not the uppercased key, so it finds nothing"
     );
-    assert_eq!(
-        lower_entry.compressed_size, upper_entry.compressed_size,
-        "same compressed size"
+    assert!(
+        archive.find("Art\\Tiles\\Grid000.Frm").is_none(),
+        "a partially uppercased path is not the uppercased key either"
     );
 
     // An absent path is `None`, and `None` is not a parse error: the archive is
@@ -1992,7 +2011,8 @@ fn synthetic_every_bit_flip_of_the_root_header_answers_without_panicking() {
 }
 
 /// claim: DAT-017
-/// oracle: class 5 (hand computed vectors from the spec: a tree that runs past its own bytes is an error)
+/// oracle: class 5 (hand computed vectors from the spec: a tree that claims more bytes than the
+/// buffer holds is an error)
 #[test]
 fn synthetic_malformed_trees_are_errors() {
     let base = synthetic_lookup();
@@ -2005,21 +2025,6 @@ fn synthetic_malformed_trees_are_errors() {
     let mut over_long_name = base.clone();
     over_long_name[LOOKUP_DIRECTORY_NAME_LENGTH] = DIRECTORY_NAME_PAST_END;
 
-    // The block header's field 0 is zero where entries are expected. The spec
-    // explicitly leaves zero entry blocks unspecified, so this row is a test author
-    // ruling pending the owner's confirmation, recorded here rather than hidden.
-    let mut zero_block_count = base.clone();
-    zero_block_count[LOOKUP_BLOCK_FIELD0] = 0;
-    zero_block_count[LOOKUP_BLOCK_FIELD0 + 1] = 0;
-    zero_block_count[LOOKUP_BLOCK_FIELD0 + 2] = 0;
-    zero_block_count[LOOKUP_BLOCK_FIELD0 + 3] = 0;
-
-    // An entry whose name length is zero. Also left open by the spec, which fixes the
-    // seventeen byte minimum record for an empty name without saying whether a parser
-    // must accept one.
-    let mut zero_entry_name = base.clone();
-    zero_entry_name[LOOKUP_ENTRY_NAME_LENGTH] = 0;
-
     // The root header claims more directories than the archive has bytes for.
     let mut too_many_directories = base.clone();
     too_many_directories[ROOT_FIELD0] = 0;
@@ -2027,10 +2032,11 @@ fn synthetic_malformed_trees_are_errors() {
     too_many_directories[ROOT_FIELD0 + 2] = 0;
     too_many_directories[ROOT_FIELD0 + 3] = ROOT_DIRECTORIES_PAST_END;
 
+    // A zero-entry block and a zero-length entry name are deliberately absent from this
+    // list: both are accepted, by ruling. See
+    // `synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted`.
     let cases = [
         ("directory name length past the end", over_long_name),
-        ("block header entry count of zero", zero_block_count),
-        ("entry name length of zero", zero_entry_name),
         (
             "root directory count past the archive",
             too_many_directories,
@@ -2059,5 +2065,71 @@ fn synthetic_malformed_trees_are_errors() {
     assert_eq!(
         refused, MALFORMED_TREE_COUNT,
         "every malformed case refused"
+    );
+}
+
+/// claim: DAT-017
+/// oracle: class 5 (hand-computed / specified behaviour, NOT class 4: the guide and the spec are
+/// silent on both cases, so nothing here is established by an independent reference
+/// implementation. The oracle happens to agree; agreement without a rule is not a rule.)
+#[test]
+fn synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted() {
+    let base = synthetic_lookup();
+    synthetic_parse(
+        &base,
+        "synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted",
+    );
+    assert_eq!(base.len(), LOOKUP_TREE_BYTES, "hand computed tree length");
+
+    // RULING: `DatArchive::parse` accepts both of these. The guide and the spec are
+    // silent on both, no byte evidence establishes that either is malformed, and the
+    // independent oracle returns `Ok` for both. Inventing a rejection rule would be an
+    // unmeasured claim, which the guide forbids: "Take no step on an unmeasured claim.
+    // Isolate it and list it as open." So the parser accepts them and the behaviour is
+    // recorded as an open item rather than encoded as a rule.
+    //
+    // OPEN ITEM: whether a zero-entry block and a zero-length entry name are intended
+    // to be accepted is UNRESOLVED. The spec does not say. This test pins the ruled
+    // behaviour so the ruling is visible and cannot drift silently.
+    //
+    // Do NOT "fix" these two cases back into `synthetic_malformed_trees_are_errors`.
+
+    // The block header's field 0 is the entry count, and zero is a legal count: a block
+    // with no entries describes nothing, which is not the same as describing something
+    // that runs off the end.
+    let mut zero_block_count = base.clone();
+    zero_block_count[LOOKUP_BLOCK_FIELD0] = 0;
+    zero_block_count[LOOKUP_BLOCK_FIELD0 + 1] = 0;
+    zero_block_count[LOOKUP_BLOCK_FIELD0 + 2] = 0;
+    zero_block_count[LOOKUP_BLOCK_FIELD0 + 3] = 0;
+
+    // An entry whose name length is zero. The seventeen byte minimum record still
+    // applies, so the record is well formed; only the name is empty.
+    let mut zero_entry_name = base.clone();
+    zero_entry_name[LOOKUP_ENTRY_NAME_LENGTH] = 0;
+
+    let cases = [
+        ("block header entry count of zero", zero_block_count),
+        ("entry name length of zero", zero_entry_name),
+    ];
+    assert_eq!(
+        cases.len(),
+        ACCEPTED_TREE_COUNT,
+        "every ruled-accepted case built"
+    );
+
+    let mut accepted = 0usize;
+    for (case, bytes) in &cases {
+        match DatArchive::parse(bytes, SYNTHETIC_ORIGIN) {
+            Ok(_) => accepted += 1,
+            Err(error) => panic!(
+                "{case}: a ruled-accepted tree parsed, got {}",
+                dat_error_name(&error)
+            ),
+        }
+    }
+    assert_eq!(
+        accepted, ACCEPTED_TREE_COUNT,
+        "every ruled-accepted case accepted"
     );
 }
