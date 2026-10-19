@@ -1,0 +1,21 @@
+--- crates/fo1-exe/src/lib.rs
++++ replace StatLimit::field0 -> i32 with 1
+@@ -505,17 +505,17 @@
+         (STAT_LIMIT_MINIMUM_AT, "minimum"),
+         (STAT_LIMIT_MAXIMUM_AT, "maximum"),
+         (STAT_LIMIT_DEFAULT_AT, "default"),
+     ];
+ 
+     /// The first field, constant `0` in all 38 records and therefore not an
+     /// index of anything (EXETBL-016).
+     pub fn field0(&self) -> i32 {
+-        self.field0
++        1 /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// The second field, constant `0` in all 38 records (EXETBL-017).
+     pub fn field1(&self) -> i32 {
+         self.field1
+     }
+ 
+     /// The third field, the only field that varies and the one with no

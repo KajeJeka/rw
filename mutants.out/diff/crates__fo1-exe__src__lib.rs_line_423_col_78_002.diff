@@ -1,0 +1,21 @@
+--- crates/fo1-exe/src/lib.rs
++++ replace < with <= in PeImage<'a>::section_for
+@@ -415,17 +415,17 @@
+     /// though it were `.bss` data.
+     pub fn section_for(&self, va: u32) -> Option<&SectionHeader> {
+         let rva = va.checked_sub(self.image_base)?;
+         self.sections
+             .iter()
+             .find(|header| match rva.checked_sub(header.virtual_address) {
+                 None => false,
+                 Some(delta) => {
+-                    header.raw_pointer != 0 && header.raw_size != 0 && delta < header.raw_size
++                    header.raw_pointer != 0 && header.raw_size != 0 && delta <= /* ~ changed by cargo-mutants ~ */ header.raw_size
+                 }
+             })
+     }
+ 
+     /// The section that owns `va`, the distance of `va` inside that section, and
+     /// the file offset `va` maps to.
+     fn translate(&self, va: u32) -> Result<(&SectionHeader, usize, usize), ExeError> {
+         let header = self.section_for(va).ok_or(ExeError::Unmapped { va })?;

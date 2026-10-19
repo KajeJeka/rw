@@ -1,0 +1,21 @@
+--- crates/fo1-exe/src/lib.rs
++++ replace != with == in PeImage<'a>::parse
+@@ -295,17 +295,17 @@
+     /// derived from it (EXETBL-002).
+     pub fn parse(bytes: &'a [u8]) -> Result<Self, ExeError> {
+         let dos = read_u32(bytes, E_LFANEW_OFFSET, "e_lfanew")?;
+         let dos_at = usize::try_from(dos).map_err(|_| ExeError::Header {
+             offset: E_LFANEW_OFFSET,
+             field: "e_lfanew",
+         })?;
+         let signature = read_u32(bytes, dos_at, "signature")?;
+-        if signature != PE_SIGNATURE {
++        if signature == /* ~ changed by cargo-mutants ~ */ PE_SIGNATURE {
+             return Err(ExeError::Header {
+                 offset: dos_at,
+                 field: "signature",
+             });
+         }
+ 
+         let coff = add(dos_at, U32_SIZE)?;
+         let section_count = usize::from(read_u16(

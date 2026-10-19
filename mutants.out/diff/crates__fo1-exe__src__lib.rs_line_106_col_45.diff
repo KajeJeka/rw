@@ -1,0 +1,21 @@
+--- crates/fo1-exe/src/lib.rs
++++ replace * with +
+@@ -98,17 +98,17 @@
+ const OPTIONAL_IMAGE_BASE_AT: usize = 28;
+ 
+ /// Value count in the hit location penalty table (EXETBL-C400).
+ const HIT_LOCATION_VALUE_COUNT: usize = 9;
+ 
+ /// Critter critical record count, the flattening of `15 x 9 x 6`
+ /// (EXETBL-C404). The three nesting dimensions are not identified, so the
+ /// reader flattens them and preserves the order.
+-const CRITTER_CRIT_RECORD_COUNT: usize = 15 * 9 * 6;
++const CRITTER_CRIT_RECORD_COUNT: usize = 15 + /* ~ changed by cargo-mutants ~ */ 9 * 6;
+ 
+ /// Player critical record count, the flattening of `9 x 6` (EXETBL-C407).
+ const PLAYER_CRIT_RECORD_COUNT: usize = 9 * 6;
+ 
+ /// Row count of the critical failure table (EXETBL-C408).
+ const CRITICAL_FAILURE_GROUPS: usize = 7;
+ 
+ /// Column count of one critical failure row (EXETBL-C409).

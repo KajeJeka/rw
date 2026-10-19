@@ -332,7 +332,10 @@ if [ -z "$FAILED_AT" ]; then
         # Each mutant must fail before the fix and pass after it. The run itself
         # belongs to the mutation step; what this step checks is that the
         # machinery is present to produce that evidence at all.
-        if cargo mutants --workspace --dry-run >/dev/null 2>&1; then
+        # `--list` is the enumeration check. `--dry-run` was removed in
+        # cargo-mutants 22 and is a hard argument error in 27, so the old
+        # spelling failed this step on a healthy toolchain.
+        if cargo mutants --workspace --list >/dev/null 2>&1; then
             step '8 fail before, pass after' pass 'cargo-mutants can enumerate the workspace'
         else
             printf 'FAIL cargo-mutants could not enumerate the workspace\n'

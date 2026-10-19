@@ -1,0 +1,21 @@
+--- crates/fo1-exe/src/lib.rs
++++ replace != with == in PeImage<'a>::require_reference_build
+@@ -366,17 +366,17 @@
+     /// The digest is checked before the headers and before any constant is used.
+     /// A mismatch is a hard stop: the constants in this module are true only for
+     /// one exact build, so relaxing them would produce a silently wrong
+     /// character instead of a visible failure. A buffer too short to hold any
+     /// header at all is therefore refused as a build mismatch, not as a header
+     /// complaint, because nothing was read to complain about.
+     pub fn require_reference_build(bytes: &'a [u8]) -> Result<Self, ExeError> {
+         let observed = sha256_hex(bytes);
+-        if observed != REFERENCE_BUILD_SHA256 {
++        if observed == /* ~ changed by cargo-mutants ~ */ REFERENCE_BUILD_SHA256 {
+             return Err(ExeError::BuildMismatch {
+                 expected_sha256: REFERENCE_BUILD_SHA256,
+                 observed_sha256: observed,
+             });
+         }
+         Self::parse(bytes)
+     }
+ 

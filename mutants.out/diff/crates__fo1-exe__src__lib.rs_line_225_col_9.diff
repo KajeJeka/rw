@@ -1,0 +1,67 @@
+--- crates/fo1-exe/src/lib.rs
++++ replace <impl fmt::Display for ExeError>::fmt -> fmt::Result with Ok(Default::default())
+@@ -217,63 +217,17 @@
+         expected_sha256: &'static str,
+         /// The digest the supplied bytes actually have.
+         observed_sha256: String,
+     },
+ }
+ 
+ impl fmt::Display for ExeError {
+     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+-        match self {
+-            Self::Header { offset, field } => {
+-                write!(
+-                    formatter,
+-                    "bad PE header field {field} at file offset 0x{offset:X}"
+-                )
+-            }
+-            Self::Unmapped { va } => {
+-                write!(
+-                    formatter,
+-                    "virtual address 0x{va:08X} is in {UNMAPPED_SECTION}"
+-                )
+-            }
+-            Self::RangeOverflow { va } => {
+-                write!(formatter, "address arithmetic overflowed for 0x{va:08X}")
+-            }
+-            Self::OutsideFile { offset, len } => {
+-                write!(
+-                    formatter,
+-                    "read of {len} bytes at file offset 0x{offset:X} runs past the end \
+-                     of its section or of the file"
+-                )
+-            }
+-            Self::FieldOutOfRange { offset, field } => {
+-                write!(
+-                    formatter,
+-                    "field {field} at file offset 0x{offset:X} is outside the record"
+-                )
+-            }
+-            Self::RecordCount {
+-                va,
+-                expected,
+-                observed,
+-            } => write!(
+-                formatter,
+-                "table at 0x{va:08X} declared {expected} records but {observed} were read"
+-            ),
+-            Self::BuildMismatch {
+-                expected_sha256,
+-                observed_sha256,
+-            } => write!(
+-                formatter,
+-                "executable digest {observed_sha256} is not the reference build \
+-                 {expected_sha256}; this build's table constants are unknown and are \
+-                 not guessed"
+-            ),
+-        }
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ impl std::error::Error for ExeError {}
+ 
+ /// A parsed PE image that can translate a virtual address into a byte range.
+ ///
+ /// The image borrows the caller's bytes, so `read_va` hands back a borrowed

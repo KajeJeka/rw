@@ -1,0 +1,208 @@
+
+*** crates/fo1-exe/src/lib.rs:518:9: replace StatLimit::field1 -> i32 with 0
+
+*** mutation diff:
+--- crates/fo1-exe/src/lib.rs
++++ replace StatLimit::field1 -> i32 with 0
+@@ -510,17 +510,17 @@
+     /// The first field, constant `0` in all 38 records and therefore not an
+     /// index of anything (EXETBL-016).
+     pub fn field0(&self) -> i32 {
+         self.field0
+     }
+ 
+     /// The second field, constant `0` in all 38 records (EXETBL-017).
+     pub fn field1(&self) -> i32 {
+-        self.field1
++        0 /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// The third field, the only field that varies and the one with no
+     /// established meaning (EXETBL-017).
+     pub fn field2(&self) -> i32 {
+         self.field2
+     }
+ 
+
+
+*** C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe test --no-run --verbose --package=fo1-exe@0.9.0 -p rw-gate
+       Fresh fo1-endian-host v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-endian-host)
+       Dirty fo1-exe v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-exe): the file `crates\fo1-exe\src\lib.rs` has changed (13436858068.270552000s, 15m 46s after last build at 13436857122.845954300s)
+   Compiling fo1-exe v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-exe)
+       Fresh fo1-lzss v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-lzss)
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name fo1_exe --edition=2021 crates\fo1-exe\src\lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=5e84de09ba1c5059 -C extra-filename=-7c4b8f33328b5858 --out-dir "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C "incremental=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\incremental" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rmeta"`
+       Fresh fo1-bigendian v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-bigendian)
+       Fresh fo1-tests v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-tests)
+       Fresh fo1-dat v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-dat)
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name fo1_exe --edition=2021 crates\fo1-exe\src\lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --test --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=7cba640dc3b82217 -C extra-filename=-bdf15064ade0b8f3 --out-dir "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C "incremental=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\incremental" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rlib"`
+       Dirty rw-gate v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp): the dependency `fo1-exe` was rebuilt
+   Compiling rw-gate v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp)
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name rw_gate --edition=2021 src\lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --test --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=607d78bc18edff91 -C extra-filename=-dfa89b2b6ccccb61 --out-dir "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C "incremental=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\incremental" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" --extern "fo1_bigendian=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_bigendian-c3694102741f5e8f.rlib" --extern "fo1_dat=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_dat-499bda88e4684e91.rlib" --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rlib" --extern "fo1_exe=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_exe-7c4b8f33328b5858.rlib" --extern "fo1_lzss=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_lzss-1f5cec2ec44ba62f.rlib" --extern "fo1_tests=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_tests-cf9a1727bf4121ad.rlib"`
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name install_archive --edition=2021 tests\gates\install_archive.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --test --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=7c30f0b15c15fb4d -C extra-filename=-fd0c13fd2607b97b --out-dir "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C "incremental=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\incremental" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" --extern "fo1_bigendian=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_bigendian-c3694102741f5e8f.rlib" --extern "fo1_dat=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_dat-499bda88e4684e91.rlib" --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rlib" --extern "fo1_exe=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_exe-7c4b8f33328b5858.rlib" --extern "fo1_lzss=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_lzss-1f5cec2ec44ba62f.rlib" --extern "fo1_tests=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_tests-cf9a1727bf4121ad.rlib" --extern "rw_gate=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\librw_gate-70122998ac8c1f54.rlib"`
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name install_exe_tables --edition=2021 tests\gates\install_exe_tables.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --test --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=8e0b19f8edf98756 -C extra-filename=-f1a60d48f80dfee6 --out-dir "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C "incremental=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\incremental" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" --extern "fo1_bigendian=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_bigendian-c3694102741f5e8f.rlib" --extern "fo1_dat=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_dat-499bda88e4684e91.rlib" --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rlib" --extern "fo1_exe=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_exe-7c4b8f33328b5858.rlib" --extern "fo1_lzss=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_lzss-1f5cec2ec44ba62f.rlib" --extern "fo1_tests=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_tests-cf9a1727bf4121ad.rlib" --extern "rw_gate=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\librw_gate-70122998ac8c1f54.rlib"`
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name install_plaintext --edition=2021 tests\gates\install_plaintext.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --test --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=25fcefbea206e7fe -C extra-filename=-19f0718591af6217 --out-dir "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C "incremental=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\incremental" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" --extern "fo1_bigendian=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_bigendian-c3694102741f5e8f.rlib" --extern "fo1_dat=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_dat-499bda88e4684e91.rlib" --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rlib" --extern "fo1_exe=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_exe-7c4b8f33328b5858.rlib" --extern "fo1_lzss=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_lzss-1f5cec2ec44ba62f.rlib" --extern "fo1_tests=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_tests-cf9a1727bf4121ad.rlib" --extern "rw_gate=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\librw_gate-70122998ac8c1f54.rlib"`
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name synthetic_lzss --edition=2021 tests\gates\synthetic_lzss.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --test --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=ffcec82c4f409bf2 -C extra-filename=-11519f585b6854f1 --out-dir "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C "incremental=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\incremental" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" --extern "fo1_bigendian=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_bigendian-c3694102741f5e8f.rlib" --extern "fo1_dat=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_dat-499bda88e4684e91.rlib" --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rlib" --extern "fo1_exe=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_exe-7c4b8f33328b5858.rlib" --extern "fo1_lzss=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_lzss-1f5cec2ec44ba62f.rlib" --extern "fo1_tests=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_tests-cf9a1727bf4121ad.rlib" --extern "rw_gate=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\librw_gate-70122998ac8c1f54.rlib"`
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name synthetic_endian --edition=2021 tests\gates\synthetic_endian.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --test --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=ec2aec359196c6ea -C extra-filename=-df6896e48da5427e --out-dir "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C "incremental=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\incremental" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" --extern "fo1_bigendian=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_bigendian-c3694102741f5e8f.rlib" --extern "fo1_dat=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_dat-499bda88e4684e91.rlib" --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rlib" --extern "fo1_exe=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_exe-7c4b8f33328b5858.rlib" --extern "fo1_lzss=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_lzss-1f5cec2ec44ba62f.rlib" --extern "fo1_tests=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_tests-cf9a1727bf4121ad.rlib" --extern "rw_gate=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\librw_gate-70122998ac8c1f54.rlib"`
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name synthetic_dat --edition=2021 tests\gates\synthetic_dat.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --test --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=b936e5f1b3e72600 -C extra-filename=-f8a9d7a724d7de50 --out-dir "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C "incremental=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\incremental" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" --extern "fo1_bigendian=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_bigendian-c3694102741f5e8f.rlib" --extern "fo1_dat=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_dat-499bda88e4684e91.rlib" --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rlib" --extern "fo1_exe=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_exe-7c4b8f33328b5858.rlib" --extern "fo1_lzss=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_lzss-1f5cec2ec44ba62f.rlib" --extern "fo1_tests=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_tests-cf9a1727bf4121ad.rlib" --extern "rw_gate=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\librw_gate-70122998ac8c1f54.rlib"`
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.25s
+  Executable `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\fo1_exe-bdf15064ade0b8f3.exe`
+  Executable `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\rw_gate-dfa89b2b6ccccb61.exe`
+  Executable `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\install_archive-fd0c13fd2607b97b.exe`
+  Executable `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\install_exe_tables-f1a60d48f80dfee6.exe`
+  Executable `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\install_plaintext-19f0718591af6217.exe`
+  Executable `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\synthetic_dat-f8a9d7a724d7de50.exe`
+  Executable `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\synthetic_endian-df6896e48da5427e.exe`
+  Executable `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\synthetic_lzss-11519f585b6854f1.exe`
+
+*** result: Success
+
+*** C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe test --verbose --package=fo1-exe@0.9.0 -p rw-gate -- --ignored
+       Fresh fo1-endian-host v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-endian-host)
+       Fresh fo1-bigendian v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-bigendian)
+       Fresh fo1-lzss v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-lzss)
+       Fresh fo1-dat v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-dat)
+       Fresh fo1-tests v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-tests)
+       Fresh rw-gate v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp)
+       Fresh fo1-exe v0.9.0 (C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-exe)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\fo1_exe-bdf15064ade0b8f3.exe --ignored`
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.00s
+
+     Running `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\rw_gate-dfa89b2b6ccccb61.exe --ignored`
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\install_archive-fd0c13fd2607b97b.exe --ignored`
+
+running 12 tests
+test the_harness_rejects_a_foreign_install ... ok
+test dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen has been running for over 60 seconds
+test dat_011_path_composition_keys_on_the_directory_name has been running for over 60 seconds
+test dat_017_stored_and_chain_entries_split_on_their_compressed_size has been running for over 60 seconds
+test dat_020_chain_stats_totals_equal_the_framing_census has been running for over 60 seconds
+test dat_022_every_block_chain_consumes_exactly_its_compressed_size has been running for over 60 seconds
+test dat_023_every_entry_decodes_to_its_declared_uncompressed_size has been running for over 60 seconds
+test dat_025_directory_and_entry_counts_are_exact has been running for over 60 seconds
+test dat_026_payload_mode_counts_are_exact has been running for over 60 seconds
+test dat_029_real_lookups_return_the_measured_entries has been running for over 60 seconds
+test lzss_014_a_stream_one_byte_short_and_one_byte_long_both_fail has been running for over 60 seconds
+test the_install_fingerprint_is_exact has been running for over 60 seconds
+test dat_022_every_block_chain_consumes_exactly_its_compressed_size ... ok
+test dat_017_stored_and_chain_entries_split_on_their_compressed_size ... ok
+test dat_011_path_composition_keys_on_the_directory_name ... ok
+test lzss_014_a_stream_one_byte_short_and_one_byte_long_both_fail ... ok
+test dat_025_directory_and_entry_counts_are_exact ... ok
+test dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen ... ok
+test dat_026_payload_mode_counts_are_exact ... ok
+test the_install_fingerprint_is_exact ... ok
+test dat_029_real_lookups_return_the_measured_entries ... ok
+test dat_020_chain_stats_totals_equal_the_framing_census ... ok
+test dat_023_every_entry_decodes_to_its_declared_uncompressed_size ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 380.60s
+
+     Running `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\install_exe_tables-f1a60d48f80dfee6.exe --ignored`
+
+running 22 tests
+test install_gate_refuses_two_short_buffers_before_touching_a_header ... ok
+test install_a_section_with_a_zero_raw_pointer_is_never_file_backed has been running for over 60 seconds
+test install_bit_flips_across_a_dgroup_slice_are_answered_never_panicked has been running for over 60 seconds
+test install_critical_failure_is_seven_rows_of_five_values has been running for over 60 seconds
+test install_critical_success_critters_are_810_records_of_28_bytes has been running for over 60 seconds
+test install_critical_success_player_is_54_records_of_28_bytes has been running for over 60 seconds
+test install_critter_critical_first_and_last_records_carry_the_measured_bytes has been running for over 60 seconds
+test install_critter_critical_table_ends_where_the_player_table_begins has been running for over 60 seconds
+test install_gate_rejects_an_executable_with_one_bit_flipped has been running for over 60 seconds
+test install_hit_location_penalties_are_the_nine_documented_values has been running for over 60 seconds
+test install_pe32_plus_optional_header_is_refused has been running for over 60 seconds
+test install_player_critical_first_and_last_records_carry_the_measured_bytes has been running for over 60 seconds
+test install_player_stat_limits_are_five_records_with_the_documented_ranges has been running for over 60 seconds
+test install_critical_success_critters_are_810_records_of_28_bytes ... ok
+test install_player_stat_limits_are_five_records_with_the_documented_ranges ... ok
+test install_bit_flips_across_a_dgroup_slice_are_answered_never_panicked ... ok
+test install_critical_success_player_is_54_records_of_28_bytes ... ok
+test install_critical_failure_is_seven_rows_of_five_values ... ok
+test install_player_stat_limits_end_where_the_xp_table_begins has been running for over 60 seconds
+test install_read_va_is_total_over_length_and_over_address has been running for over 60 seconds
+test install_read_va_returns_every_table_window_from_dgroup_raw_data has been running for over 60 seconds
+test install_reference_build_is_admitted_and_carries_the_expected_digest has been running for over 60 seconds
+test install_stat_limit_record_sixteen_has_a_minimum_of_zero_and_not_minus_sixty has been running for over 60 seconds
+test install_critter_critical_table_ends_where_the_player_table_begins ... ok
+test install_pe32_plus_optional_header_is_refused ... ok
+test install_a_section_with_a_zero_raw_pointer_is_never_file_backed ... ok
+test install_hit_location_penalties_are_the_nine_documented_values ... ok
+test install_player_critical_first_and_last_records_carry_the_measured_bytes ... ok
+test install_gate_rejects_an_executable_with_one_bit_flipped ... ok
+test install_critter_critical_first_and_last_records_carry_the_measured_bytes ... ok
+test install_read_va_is_total_over_length_and_over_address ... ok
+test install_player_stat_limits_end_where_the_xp_table_begins ... ok
+test install_read_va_returns_every_table_window_from_dgroup_raw_data ... ok
+test install_stat_limits_are_thirty_eight_records_of_six_fields_with_a_zero_field_zero has been running for over 60 seconds
+test install_stat_limits_end_where_the_player_stat_limits_begin has been running for over 60 seconds
+test install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216 has been running for over 60 seconds
+test install_xp_table_holds_the_twenty_one_triangular_numbers_indexed_by_level has been running for over 60 seconds
+test install_stat_limit_record_sixteen_has_a_minimum_of_zero_and_not_minus_sixty ... ok
+test install_stat_limits_end_where_the_player_stat_limits_begin ... ok
+test install_stat_limits_are_thirty_eight_records_of_six_fields_with_a_zero_field_zero ... ok
+test install_xp_table_holds_the_twenty_one_triangular_numbers_indexed_by_level ... ok
+test install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216 ... ok
+test install_reference_build_is_admitted_and_carries_the_expected_digest ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 511.13s
+
+     Running `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\install_plaintext-19f0718591af6217.exe --ignored`
+
+running 6 tests
+test dat_028_every_candidate_is_accounted_for_in_exactly_one_bucket ... ok
+test dat_028_candidate_discovery_lists_all_thirty_one_names has been running for over 60 seconds
+test dat_028_three_loose_files_differ_in_size_and_are_excluded has been running for over 60 seconds
+test dat_028_three_patched_copies_differ_at_their_first_byte has been running for over 60 seconds
+test dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte has been running for over 60 seconds
+test every_candidate_decodes_to_its_declared_uncompressed_size has been running for over 60 seconds
+test dat_028_three_loose_files_differ_in_size_and_are_excluded ... ok
+test dat_028_three_patched_copies_differ_at_their_first_byte ... ok
+test dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte ... ok
+test dat_028_candidate_discovery_lists_all_thirty_one_names ... ok
+test every_candidate_decodes_to_its_declared_uncompressed_size ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 194.40s
+
+     Running `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\synthetic_dat-f8a9d7a724d7de50.exe --ignored`
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.00s
+
+     Running `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\synthetic_endian-df6896e48da5427e.exe --ignored`
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.00s
+
+     Running `C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\synthetic_lzss-11519f585b6854f1.exe --ignored`
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.00s
+
+   Doc-tests fo1_exe
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustdoc.exe --edition=2021 --crate-type lib --color auto --crate-name fo1_exe --test crates\fo1-exe\src\lib.rs --test-run-directory "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\crates\fo1-exe" --test-args --ignored --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rlib" --extern "fo1_exe=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_exe-7c4b8f33328b5858.rlib" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C embed-bitcode=no --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" --error-format human`
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rw_gate
+     Running `C:\Users\Luiz\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\rustdoc.exe --edition=2021 --crate-type lib --color auto --crate-name rw_gate --test src\lib.rs --test-run-directory "C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp" --test-args --ignored --deny=clippy::unwrap_used --deny=unused_must_use --forbid=unsafe_code --deny=clippy::unimplemented --deny=clippy::todo --deny=clippy::print_stdout --deny=clippy::print_stderr --deny=clippy::panic --warn=missing_docs --deny=clippy::indexing_slicing --deny=clippy::expect_used --deny=clippy::dbg_macro --deny=clippy::cast_sign_loss --deny=clippy::cast_possible_wrap --deny=clippy::cast_possible_truncation --deny=clippy::allow_attributes_without_reason --extern "fo1_bigendian=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_bigendian-c3694102741f5e8f.rlib" --extern "fo1_dat=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_dat-499bda88e4684e91.rlib" --extern "fo1_endian_host=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_endian_host-fa9b1a2d9290984f.rlib" --extern "fo1_exe=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_exe-7c4b8f33328b5858.rlib" --extern "fo1_lzss=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_lzss-1f5cec2ec44ba62f.rlib" --extern "fo1_tests=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\libfo1_tests-cf9a1727bf4121ad.rlib" --extern "rw_gate=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps\librw_gate-70122998ac8c1f54.rlib" -L "dependency=C:\Users\Luiz\AppData\Local\Temp\cargo-mutants-Rusty Wasteland-yjpOPW.tmp\target-agent-mutants\debug\deps" -C embed-bitcode=no --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" --error-format human`
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+*** result: Success

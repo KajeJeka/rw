@@ -1,0 +1,2985 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.7254728999999998,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 343.6105424,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:106:49: replace * with +",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 106,
+              "column": 49
+            },
+            "end": {
+              "line": 106,
+              "column": 50
+            }
+          },
+          "replacement": "+",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_106_col_49.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_106_col_49.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.4784985,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 969.6415535,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:106:45: replace * with /",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 106,
+              "column": 45
+            },
+            "end": {
+              "line": 106,
+              "column": 46
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_106_col_45_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_106_col_45_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 19.2835483,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1004.3711452,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:106:45: replace * with +",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 106,
+              "column": 45
+            },
+            "end": {
+              "line": 106,
+              "column": 46
+            }
+          },
+          "replacement": "+",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_106_col_45.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_106_col_45.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 16.6475802,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1028.9781166,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:106:49: replace * with /",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 106,
+              "column": 49
+            },
+            "end": {
+              "line": 106,
+              "column": 50
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_106_col_49_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_106_col_49_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 22.2287127,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1027.5089449,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:297:9: replace PeImage<'a>::parse -> Result<Self, ExeError> with Ok(Default::default())",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::parse",
+            "return_type": "-> Result<Self, ExeError>",
+            "span": {
+              "start": {
+                "line": 288,
+                "column": 5
+              },
+              "end": {
+                "line": 361,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 297,
+              "column": 9
+            },
+            "end": {
+              "line": 360,
+              "column": 11
+            }
+          },
+          "replacement": "Ok(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_297_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_297_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.077126,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:109:43: replace * with +",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 109,
+              "column": 43
+            },
+            "end": {
+              "line": 109,
+              "column": 44
+            }
+          },
+          "replacement": "+",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_109_col_43.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_109_col_43.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.3779426,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 960.6131304,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:109:43: replace * with /",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 109,
+              "column": 43
+            },
+            "end": {
+              "line": 109,
+              "column": 44
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_109_col_43_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_109_col_43_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.8805276,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 949.0251137,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:373:9: replace PeImage<'a>::require_reference_build -> Result<Self, ExeError> with Ok(Default::default())",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::require_reference_build",
+            "return_type": "-> Result<Self, ExeError>",
+            "span": {
+              "start": {
+                "line": 363,
+                "column": 5
+              },
+              "end": {
+                "line": 381,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 373,
+              "column": 9
+            },
+            "end": {
+              "line": 380,
+              "column": 27
+            }
+          },
+          "replacement": "Ok(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_373_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_373_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.0600038999999999,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:303:22: replace != with == in PeImage<'a>::parse",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::parse",
+            "return_type": "-> Result<Self, ExeError>",
+            "span": {
+              "start": {
+                "line": 288,
+                "column": 5
+              },
+              "end": {
+                "line": 361,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 303,
+              "column": 22
+            },
+            "end": {
+              "line": 303,
+              "column": 24
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_303_col_22.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_303_col_22.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 7.5303175,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1005.6688633,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:225:9: replace <impl fmt::Display for ExeError>::fmt -> fmt::Result with Ok(Default::default())",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "<impl fmt::Display for ExeError>::fmt",
+            "return_type": "-> fmt::Result",
+            "span": {
+              "start": {
+                "line": 224,
+                "column": 5
+              },
+              "end": {
+                "line": 272,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 225,
+              "column": 9
+            },
+            "end": {
+              "line": 271,
+              "column": 10
+            }
+          },
+          "replacement": "Ok(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_225_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_225_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 6.9686794,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1177.5724341,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:323:56: replace != with == in PeImage<'a>::parse",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::parse",
+            "return_type": "-> Result<Self, ExeError>",
+            "span": {
+              "start": {
+                "line": 288,
+                "column": 5
+              },
+              "end": {
+                "line": 361,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 323,
+              "column": 56
+            },
+            "end": {
+              "line": 323,
+              "column": 58
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_323_col_56.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_323_col_56.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.0931541,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 938.4109633,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:374:21: replace != with == in PeImage<'a>::require_reference_build",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::require_reference_build",
+            "return_type": "-> Result<Self, ExeError>",
+            "span": {
+              "start": {
+                "line": 363,
+                "column": 5
+              },
+              "end": {
+                "line": 381,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 374,
+              "column": 21
+            },
+            "end": {
+              "line": 374,
+              "column": 23
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_374_col_21.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_374_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.9811649,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 977.2011003,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:392:9: replace PeImage<'a>::read_va -> Result<&'a[u8], ExeError> with Ok(Vec::leak(Vec::new()))",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::read_va",
+            "return_type": "-> Result<&'a[u8], ExeError>",
+            "span": {
+              "start": {
+                "line": 383,
+                "column": 5
+              },
+              "end": {
+                "line": 407,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 392,
+              "column": 9
+            },
+            "end": {
+              "line": 406,
+              "column": 65
+            }
+          },
+          "replacement": "Ok(Vec::leak(Vec::new()))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_392_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_392_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.0088532,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 989.1353275,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:392:9: replace PeImage<'a>::read_va -> Result<&'a[u8], ExeError> with Ok(Vec::leak(vec![0]))",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::read_va",
+            "return_type": "-> Result<&'a[u8], ExeError>",
+            "span": {
+              "start": {
+                "line": 383,
+                "column": 5
+              },
+              "end": {
+                "line": 407,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 392,
+              "column": 9
+            },
+            "end": {
+              "line": 406,
+              "column": 65
+            }
+          },
+          "replacement": "Ok(Vec::leak(vec![0]))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_392_col_9_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_392_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.7091628,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 938.7416054,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:392:9: replace PeImage<'a>::read_va -> Result<&'a[u8], ExeError> with Ok(Vec::leak(vec![1]))",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::read_va",
+            "return_type": "-> Result<&'a[u8], ExeError>",
+            "span": {
+              "start": {
+                "line": 383,
+                "column": 5
+              },
+              "end": {
+                "line": 407,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 392,
+              "column": 9
+            },
+            "end": {
+              "line": 406,
+              "column": 65
+            }
+          },
+          "replacement": "Ok(Vec::leak(vec![1]))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_392_col_9_002.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_392_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 6.8451623999999995,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 990.167537,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:397:17: replace > with == in PeImage<'a>::read_va",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::read_va",
+            "return_type": "-> Result<&'a[u8], ExeError>",
+            "span": {
+              "start": {
+                "line": 383,
+                "column": 5
+              },
+              "end": {
+                "line": 407,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 397,
+              "column": 17
+            },
+            "end": {
+              "line": 397,
+              "column": 18
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_397_col_17.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_397_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.8540339,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 953.9134377,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:417:9: replace PeImage<'a>::section_for -> Option<&SectionHeader> with Some(Box::leak(Box::new(Default::default())))",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::section_for",
+            "return_type": "-> Option<&SectionHeader>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 5
+              },
+              "end": {
+                "line": 426,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 417,
+              "column": 9
+            },
+            "end": {
+              "line": 425,
+              "column": 15
+            }
+          },
+          "replacement": "Some(Box::leak(Box::new(Default::default())))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_417_col_9_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_417_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.2406342,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:397:17: replace > with < in PeImage<'a>::read_va",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::read_va",
+            "return_type": "-> Result<&'a[u8], ExeError>",
+            "span": {
+              "start": {
+                "line": 383,
+                "column": 5
+              },
+              "end": {
+                "line": 407,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 397,
+              "column": 17
+            },
+            "end": {
+              "line": 397,
+              "column": 18
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_397_col_17_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_397_col_17_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 7.433522,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 941.5480265,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:397:17: replace > with >= in PeImage<'a>::read_va",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::read_va",
+            "return_type": "-> Result<&'a[u8], ExeError>",
+            "span": {
+              "start": {
+                "line": 383,
+                "column": 5
+              },
+              "end": {
+                "line": 407,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 397,
+              "column": 17
+            },
+            "end": {
+              "line": 397,
+              "column": 18
+            }
+          },
+          "replacement": ">=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_397_col_17_002.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_397_col_17_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.8940395,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 947.862229,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:417:9: replace PeImage<'a>::section_for -> Option<&SectionHeader> with None",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::section_for",
+            "return_type": "-> Option<&SectionHeader>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 5
+              },
+              "end": {
+                "line": 426,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 417,
+              "column": 9
+            },
+            "end": {
+              "line": 425,
+              "column": 15
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_417_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_417_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.2360107,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 970.5691885,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:423:69: replace && with || in PeImage<'a>::section_for",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::section_for",
+            "return_type": "-> Option<&SectionHeader>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 5
+              },
+              "end": {
+                "line": 426,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 423,
+              "column": 69
+            },
+            "end": {
+              "line": 423,
+              "column": 71
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_423_col_69.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_423_col_69.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.886763,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 941.0922586,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:423:45: replace && with || in PeImage<'a>::section_for",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::section_for",
+            "return_type": "-> Option<&SectionHeader>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 5
+              },
+              "end": {
+                "line": 426,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 423,
+              "column": 45
+            },
+            "end": {
+              "line": 423,
+              "column": 47
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_423_col_45.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_423_col_45.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.9164302,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 981.2892986,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:423:40: replace != with == in PeImage<'a>::section_for",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::section_for",
+            "return_type": "-> Option<&SectionHeader>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 5
+              },
+              "end": {
+                "line": 426,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 423,
+              "column": 40
+            },
+            "end": {
+              "line": 423,
+              "column": 42
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_423_col_40.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_423_col_40.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.9478292,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 938.9123194,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:423:64: replace != with == in PeImage<'a>::section_for",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::section_for",
+            "return_type": "-> Option<&SectionHeader>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 5
+              },
+              "end": {
+                "line": 426,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 423,
+              "column": 64
+            },
+            "end": {
+              "line": 423,
+              "column": 66
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_423_col_64.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_423_col_64.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.3520336,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 973.479585,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:431:9: replace PeImage<'a>::translate -> Result<(&SectionHeader, usize, usize), ExeError> with Ok((Box::leak(Box::new(Default::default())), 0, 0))",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::translate",
+            "return_type": "-> Result<(&SectionHeader, usize, usize), ExeError>",
+            "span": {
+              "start": {
+                "line": 428,
+                "column": 5
+              },
+              "end": {
+                "line": 445,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 431,
+              "column": 9
+            },
+            "end": {
+              "line": 444,
+              "column": 36
+            }
+          },
+          "replacement": "Ok((Box::leak(Box::new(Default::default())), 0, 0))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_431_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_431_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.7024094,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:431:9: replace PeImage<'a>::translate -> Result<(&SectionHeader, usize, usize), ExeError> with Ok((Box::leak(Box::new(Default::default())), 0, 1))",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::translate",
+            "return_type": "-> Result<(&SectionHeader, usize, usize), ExeError>",
+            "span": {
+              "start": {
+                "line": 428,
+                "column": 5
+              },
+              "end": {
+                "line": 445,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 431,
+              "column": 9
+            },
+            "end": {
+              "line": 444,
+              "column": 36
+            }
+          },
+          "replacement": "Ok((Box::leak(Box::new(Default::default())), 0, 1))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_431_col_9_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_431_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.7018108,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:431:9: replace PeImage<'a>::translate -> Result<(&SectionHeader, usize, usize), ExeError> with Ok((Box::leak(Box::new(Default::default())), 1, 0))",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::translate",
+            "return_type": "-> Result<(&SectionHeader, usize, usize), ExeError>",
+            "span": {
+              "start": {
+                "line": 428,
+                "column": 5
+              },
+              "end": {
+                "line": 445,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 431,
+              "column": 9
+            },
+            "end": {
+              "line": 444,
+              "column": 36
+            }
+          },
+          "replacement": "Ok((Box::leak(Box::new(Default::default())), 1, 0))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_431_col_9_002.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_431_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.6682031,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:431:9: replace PeImage<'a>::translate -> Result<(&SectionHeader, usize, usize), ExeError> with Ok((Box::leak(Box::new(Default::default())), 1, 1))",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::translate",
+            "return_type": "-> Result<(&SectionHeader, usize, usize), ExeError>",
+            "span": {
+              "start": {
+                "line": 428,
+                "column": 5
+              },
+              "end": {
+                "line": 445,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 431,
+              "column": 9
+            },
+            "end": {
+              "line": 444,
+              "column": 36
+            }
+          },
+          "replacement": "Ok((Box::leak(Box::new(Default::default())), 1, 1))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_431_col_9_003.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_431_col_9_003.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.6680177,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:423:78: replace < with == in PeImage<'a>::section_for",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::section_for",
+            "return_type": "-> Option<&SectionHeader>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 5
+              },
+              "end": {
+                "line": 426,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 423,
+              "column": 78
+            },
+            "end": {
+              "line": 423,
+              "column": 79
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_423_col_78.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_423_col_78.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 6.6342561,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 962.2617437,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:423:78: replace < with > in PeImage<'a>::section_for",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::section_for",
+            "return_type": "-> Option<&SectionHeader>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 5
+              },
+              "end": {
+                "line": 426,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 423,
+              "column": 78
+            },
+            "end": {
+              "line": 423,
+              "column": 79
+            }
+          },
+          "replacement": ">",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_423_col_78_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_423_col_78_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.8721722,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 948.0031203,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:423:78: replace < with <= in PeImage<'a>::section_for",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "PeImage<'a>::section_for",
+            "return_type": "-> Option<&SectionHeader>",
+            "span": {
+              "start": {
+                "line": 409,
+                "column": 5
+              },
+              "end": {
+                "line": 426,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 423,
+              "column": 78
+            },
+            "end": {
+              "line": 423,
+              "column": 79
+            }
+          },
+          "replacement": "<=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_423_col_78_002.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_423_col_78_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.7422456,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 939.8342952,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:513:9: replace StatLimit::field0 -> i32 with 1",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::field0",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 510,
+                "column": 5
+              },
+              "end": {
+                "line": 514,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 513,
+              "column": 9
+            },
+            "end": {
+              "line": 513,
+              "column": 20
+            }
+          },
+          "replacement": "1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_513_col_9_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_513_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 7.4147411,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 966.3200374,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:513:9: replace StatLimit::field0 -> i32 with -1",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::field0",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 510,
+                "column": 5
+              },
+              "end": {
+                "line": 514,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 513,
+              "column": 9
+            },
+            "end": {
+              "line": 513,
+              "column": 20
+            }
+          },
+          "replacement": "-1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_513_col_9_002.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_513_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 8.6731337,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 920.7512517,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:513:9: replace StatLimit::field0 -> i32 with 0",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::field0",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 510,
+                "column": 5
+              },
+              "end": {
+                "line": 514,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 513,
+              "column": 9
+            },
+            "end": {
+              "line": 513,
+              "column": 20
+            }
+          },
+          "replacement": "0",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_513_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_513_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.8759592,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1088.3001825,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:518:9: replace StatLimit::field1 -> i32 with 0",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::field1",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 519,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 518,
+              "column": 9
+            },
+            "end": {
+              "line": 518,
+              "column": 20
+            }
+          },
+          "replacement": "0",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_518_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_518_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.639528,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1100.5461665,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:518:9: replace StatLimit::field1 -> i32 with 1",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::field1",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 519,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 518,
+              "column": 9
+            },
+            "end": {
+              "line": 518,
+              "column": 20
+            }
+          },
+          "replacement": "1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_518_col_9_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_518_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.9644627,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 977.6153033,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:518:9: replace StatLimit::field1 -> i32 with -1",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::field1",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 516,
+                "column": 5
+              },
+              "end": {
+                "line": 519,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 518,
+              "column": 9
+            },
+            "end": {
+              "line": 518,
+              "column": 20
+            }
+          },
+          "replacement": "-1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_518_col_9_002.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_518_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.4676136,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 958.8281049,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:524:9: replace StatLimit::field2 -> i32 with 0",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::field2",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 521,
+                "column": 5
+              },
+              "end": {
+                "line": 525,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 524,
+              "column": 9
+            },
+            "end": {
+              "line": 524,
+              "column": 20
+            }
+          },
+          "replacement": "0",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_524_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_524_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 13.7090243,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 993.2359703,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:524:9: replace StatLimit::field2 -> i32 with 1",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::field2",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 521,
+                "column": 5
+              },
+              "end": {
+                "line": 525,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 524,
+              "column": 9
+            },
+            "end": {
+              "line": 524,
+              "column": 20
+            }
+          },
+          "replacement": "1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_524_col_9_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_524_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.260026,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 924.5929976,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:524:9: replace StatLimit::field2 -> i32 with -1",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::field2",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 521,
+                "column": 5
+              },
+              "end": {
+                "line": 525,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 524,
+              "column": 9
+            },
+            "end": {
+              "line": 524,
+              "column": 20
+            }
+          },
+          "replacement": "-1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_524_col_9_002.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_524_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.2253122,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 982.0310428,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:530:9: replace StatLimit::minimum -> i32 with 0",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::minimum",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 527,
+                "column": 5
+              },
+              "end": {
+                "line": 531,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 530,
+              "column": 9
+            },
+            "end": {
+              "line": 530,
+              "column": 21
+            }
+          },
+          "replacement": "0",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_530_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_530_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 6.2822183,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 984.3924515,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:530:9: replace StatLimit::minimum -> i32 with 1",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::minimum",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 527,
+                "column": 5
+              },
+              "end": {
+                "line": 531,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 530,
+              "column": 9
+            },
+            "end": {
+              "line": 530,
+              "column": 21
+            }
+          },
+          "replacement": "1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_530_col_9_001.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_530_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.2364227,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 958.5316513,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:530:9: replace StatLimit::minimum -> i32 with -1",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::minimum",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 527,
+                "column": 5
+              },
+              "end": {
+                "line": 531,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 530,
+              "column": 9
+            },
+            "end": {
+              "line": 530,
+              "column": 21
+            }
+          },
+          "replacement": "-1",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_530_col_9_002.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_530_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 6.0162343,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 950.3945647,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/fo1-exe/src/lib.rs:535:9: replace StatLimit::maximum -> i32 with 0",
+          "package": "fo1-exe",
+          "file": "crates/fo1-exe/src/lib.rs",
+          "function": {
+            "function_name": "StatLimit::maximum",
+            "return_type": "-> i32",
+            "span": {
+              "start": {
+                "line": 533,
+                "column": 5
+              },
+              "end": {
+                "line": 536,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 535,
+              "column": 9
+            },
+            "end": {
+              "line": 535,
+              "column": 21
+            }
+          },
+          "replacement": "0",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__fo1-exe__src__lib.rs_line_535_col_9.log",
+      "diff_path": "diff/crates__fo1-exe__src__lib.rs_line_535_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.1004102,
+          "process_status": "Success",
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 958.9843667,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "C:\\Users\\Luiz\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin\\cargo.exe",
+            "test",
+            "--verbose",
+            "--package=fo1-exe@0.9.0",
+            "-p",
+            "rw-gate",
+            "--",
+            "--ignored"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 44,
+  "missed": 3,
+  "caught": 34,
+  "timeout": 0,
+  "unviable": 7,
+  "success": 0,
+  "start_time": "2026-10-19T02:47:58.1048655Z",
+  "end_time": null,
+  "cargo_mutants_version": "27.1.0"
+}

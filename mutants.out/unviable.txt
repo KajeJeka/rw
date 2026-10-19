@@ -1,0 +1,7 @@
+crates/fo1-exe/src/lib.rs:297:9: replace PeImage<'a>::parse -> Result<Self, ExeError> with Ok(Default::default())
+crates/fo1-exe/src/lib.rs:373:9: replace PeImage<'a>::require_reference_build -> Result<Self, ExeError> with Ok(Default::default())
+crates/fo1-exe/src/lib.rs:417:9: replace PeImage<'a>::section_for -> Option<&SectionHeader> with Some(Box::leak(Box::new(Default::default())))
+crates/fo1-exe/src/lib.rs:431:9: replace PeImage<'a>::translate -> Result<(&SectionHeader, usize, usize), ExeError> with Ok((Box::leak(Box::new(Default::default())), 0, 0))
+crates/fo1-exe/src/lib.rs:431:9: replace PeImage<'a>::translate -> Result<(&SectionHeader, usize, usize), ExeError> with Ok((Box::leak(Box::new(Default::default())), 0, 1))
+crates/fo1-exe/src/lib.rs:431:9: replace PeImage<'a>::translate -> Result<(&SectionHeader, usize, usize), ExeError> with Ok((Box::leak(Box::new(Default::default())), 1, 0))
+crates/fo1-exe/src/lib.rs:431:9: replace PeImage<'a>::translate -> Result<(&SectionHeader, usize, usize), ExeError> with Ok((Box::leak(Box::new(Default::default())), 1, 1))

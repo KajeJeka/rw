@@ -1,0 +1,35 @@
+--- crates/fo1-exe/src/lib.rs
++++ replace PeImage<'a>::read_va -> Result<&'a[u8], ExeError> with Ok(Vec::leak(vec![1]))
+@@ -384,31 +384,17 @@
+     ///
+     /// Containment is tested against `raw_size`, because every section of the
+     /// reference build declares `virtual_size == 0` (EXETBL-002). The read is
+     /// then bounded by the containing section's raw extent, before the file is
+     /// consulted at all: a length that would run past the section is an error,
+     /// not a shorter read and not a read that carries on into the next section's
+     /// bytes.
+     pub fn read_va(&self, va: u32, len: usize) -> Result<&'a [u8], ExeError> {
+-        let (header, delta, start) = self.translate(va)?;
+-        let limit = usize::try_from(header.raw_size).map_err(|_| ExeError::RangeOverflow { va })?;
+-        let span = delta
+-            .checked_add(len)
+-            .ok_or(ExeError::RangeOverflow { va })?;
+-        if span > limit {
+-            return Err(ExeError::OutsideFile { offset: start, len });
+-        }
+-        let end = start
+-            .checked_add(len)
+-            .ok_or(ExeError::RangeOverflow { va })?;
+-        // A total `get` keeps a short file an error rather than a panic.
+-        self.bytes
+-            .get(start..end)
+-            .ok_or(ExeError::OutsideFile { offset: start, len })
++        Ok(Vec::leak(vec![1])) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// The section header that owns `va`, if any (EXETBL-002).
+     ///
+     /// A section is file backed only when `raw_pointer != 0` **and**
+     /// `raw_size != 0`. `.bss` declares a large nonzero `raw_size` beside a
+     /// zero `raw_pointer`, so a size-only test would accept it, map any address
+     /// in it to file offset `0 + delta`, and hand back the DOS header `MZ` as
