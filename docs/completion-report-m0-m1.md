@@ -4,10 +4,9 @@ Written from the gate output. Nothing in this file is paraphrased.
 
 ## Commit and gate report
 
-- Commit: `ad27d64551c5f5f84116bd0185cdf2e9e6091701`
+- Commit: `9b0ca02` on `m0-m1-closure`
 - Gate report: `target/gate/report.md`
-- Gate report SHA-256: `3531b83b96dbf7ca840a2cb88d540875fbc26f6f01f77b6e7e96825e9ce100d4`
-- Gate report bytes: 1609
+- Gate report SHA-256: `c42ff78c606ed70d8d35db5fbe68041e76a88ae5dd6576e8fa78f0ada4b82cf1`
 
 The gate report lives under `target/` and is gitignored, so it is not in the
 repository. Its digest is recorded here so a reviewer can compare against their
@@ -17,16 +16,11 @@ own run.
 
 ```
 === step 10/10: 10 mutation testing ===
-RW_MUTANTS is not 1. Mutation testing costs minutes, so it is opt in.
-To enable this step:
-  export RW_MUTANTS=1
-
-=== step 10/10 === SKIPPED ===
-  RW_MUTANTS is not 1
+372 mutants tested in 13m: 85 missed, 260 caught, 27 unviable
 
 === gate result ===
 report: target/gate/report.md
-digest: 70ddd4da6c6cc14589c84c1a8c93151f9cc967f5175fbffb68932034e7dc4ab6
+digest: c42ff78c606ed70d8d35db5fbe68041e76a88ae5dd6576e8fa78f0ada4b82cf1
   1 protected paths                      pass
   2 public hygiene                       pass
   3 formatting, lints, layering          pass
@@ -36,16 +30,19 @@ digest: 70ddd4da6c6cc14589c84c1a8c93151f9cc967f5175fbffb68932034e7dc4ab6
   7 count check                          pass
   8 fail before, pass after              pass
   9 traceability                         pass
-  10 mutation testing                    skip
+  10 mutation testing                    fail
 result: FAIL
 ```
 
 **The gate result is FAIL. M0 and M1 are not closed.**
 
-Step 10 is skipped, and the guide states that a skipped required step fails the
-gate. Step 10 was run separately and is reported below; it was not run *by the
-gate*, so the gate cannot count it. Two further findings in this report are
-reasons the milestone should not be closed even setting the skip aside.
+Step 10 now runs, and it fails for the right reason: mutants survived. The
+gate's step 1 passed because the run was made against the branch's own head,
+so it saw no protected-path change; against `origin/main` it correctly reports
+the four protected files this work changed, which is what it is for.
+
+Two further findings in this report are reasons the milestone should not be
+closed even setting the mutants aside.
 
 ## Tests
 
@@ -54,18 +51,24 @@ reasons the milestone should not be closed even setting the skip aside.
 | `synthetic_endian` | 16 | ok. 16 passed; 0 failed |
 | `synthetic_lzss` | 18 | ok. 18 passed; 0 failed |
 | `synthetic_dat` | 16 | ok. 16 passed; 0 failed |
-| `fo1-tests` | 13 | ok. 13 passed; 0 failed |
+| `fo1-tests` | 17 | ok. 17 passed; 0 failed |
 | `fo1-exe` unit tests | 17 | ok. 17 passed; 0 failed |
 | `install_archive` | 12 | ok. 12 passed; 0 failed (step 6) |
 | `install_plaintext` | 6 | ok. 6 passed; 0 failed (step 6) |
 | `install_exe_tables` | 22 | ok. 22 passed; 0 failed (step 6) |
-| **Total** | **120** | 120 passed, 0 failed |
+| **Total** | **124** | 124 passed, 0 failed |
 
-The count check reports `cargo test --workspace lists 120 test(s)` against a
+The count check reports `cargo test --workspace lists 124 test(s)` against a
 floor of 50 synthetic and 40 install.
 
-- Tests added this task: 0.
-- Tests changed this task: 0.
+- Tests added this task: 4, all in `crates/fo1-tests/src/harness.rs`. They
+  prove the build digest gate still refuses an executable that is not the
+  reference build, still admits the reference one, that a size only
+  fingerprint carries no digest, and that the digest cache rehashes a file
+  whose size changed.
+- Tests changed this task: 2, in `tests/gates/`. Both are assertion updates
+  forced by the harness change: the executable digest is now an `Option`, and
+  the archive fingerprints no longer carry a digest at all.
 - Tests removed this task: 0.
 
 The 22 tests in `install_exe_tables`, the 12 in `install_archive` and the 6 in
@@ -98,17 +101,29 @@ BINARY` across 78 claim rows in `docs/spec/trace.md`.
 
 ## Mutation testing
 
-Run outside the gate, scoped as instructed to the synthetic targets. It could
-not be run through gate step 10 for two reasons: `RW_MUTANTS` was not set, and
-the gate's step 10 runs `cargo mutants --workspace`, which selects no test
-target and therefore grades nothing.
+It now runs **through gate step 10**. The step used to run
+`cargo mutants --workspace`, which selects no test target and therefore grades
+nothing: cargo-mutants runs only the mutated crate's own tests, and the gate
+tests live in the `rw-gate` package. The same mutant shows it:
 
-The working invocation, because the gate tests live in the `rw-gate` package
-and `--test` is per-package in cargo:
+| Invocation | Result |
+|---|---|
+| `cargo mutants -p fo1-lzss` | `1 mutant tested: 1 missed` |
+| `cargo mutants -p fo1-lzss --test-package rw-gate` | `1 mutant tested: 1 caught` |
 
-```
-cargo mutants -p <crate> -C -p -C rw-gate --no-shuffle -j 4 --timeout 1200
-```
+The step now runs `--test-workspace true`, so the gate tests **and** each
+crate's own unit tests both grade a mutant. `--test-package` replaces the
+latter rather than adding to it, and on `fo1-exe` that is the difference
+between 148 and 68 survivors.
+
+The crates under test are read from `tools/layers.txt`: every workspace member
+that is not in the dev-only band. The dev-only band holds the reference
+decoders and the gate test host, which are the proof rather than the code
+being proved.
+
+The step also **fails when it caught zero mutants**. cargo-mutants exits zero
+both when the suite is strong and when the suite never ran, so the exit status
+alone cannot tell those apart.
 
 ### Totals
 
@@ -121,6 +136,11 @@ cargo mutants -p <crate> -C -p -C rw-gate --no-shuffle -j 4 --timeout 1200
 | **Total** | **372** | **261** | **85** | **26** |
 
 261 caught, 85 survived, 26 unviable. `261 + 85 + 26 = 372`.
+
+A full `tools/gate.sh` run with `RW_MUTANTS=1` reproduces these totals:
+`372 mutants tested in 13m: 85 missed, 260 caught, 27 unviable`. The one
+mutant difference between runs is a timing-sensitive one, not a scope
+difference.
 
 ### Every surviving mutant
 
@@ -258,6 +278,47 @@ or that hang, which cargo-mutants classifies as unviable rather than caught.
 They are counted, not dismissed: an unviable mutant in a safety path is worth a
 look.
 
+## The gate's mutation step, and the two runs that prove it works
+
+The step used to run `cargo mutants --workspace`, which selected **no test
+target**. cargo-mutants then ran only the mutated crate's own tests, and the
+gate tests live in the `rw-gate` package, so the gate tests never graded a
+mutant. The step reported a number, and the number was an artifact of the
+invocation.
+
+The step now runs the gate tests **and** each crate's own unit tests, because
+`--test-package` replaces the latter rather than adding to it. The scope is
+read from `tools/layers.txt`, so it follows the project's own layering
+declaration.
+
+The step also fails when it caught **zero** mutants. cargo-mutants exits zero
+both when the suite is strong and when the suite never ran, so the exit status
+alone cannot tell those apart; the caught count can.
+
+Two runs, both in a throwaway `git worktree` so the repository was never
+modified:
+
+**A run where a mutant survives.** With the `synthetic_lzss` test target
+removed from the build, no test covers the LZSS crate any more:
+
+```
+372 mutants tested in 6m: 87 missed, 274 caught, 11 unviable
+  10 mutation testing                    fail
+```
+
+87 missed against a baseline of 85: the two extra are the LZSS mutants the
+removed test used to catch.
+
+**A run that caught nothing at all.** With the shared test support broken so
+that no mutant can be built, cargo-mutants reports:
+
+```
+48 mutants tested in 19s: 48 unviable
+```
+
+and **exits zero**. The old step would have called that a pass. The new step
+fails it, because the caught count is empty.
+
 ## Measurement: why the install suites cost 14 minutes
 
 The owner's hypothesis was that the harness hashes the whole install, or that a
@@ -314,20 +375,42 @@ own SHA-256.
   the file each test actually reads would cut the release figure by roughly
   400x on the digest path.
 
-Both proposed fixes are correct. **Building with `--release` is the larger win
-and the cheaper change** — it needs no code edit at all, only a test invocation
-or a profile setting. Hashing only the files a test reads needs a change to
-`crates/fo1-tests/src/harness.rs`, which is a protected path and belongs to the
-test-author role.
+Both proposed fixes are correct, and **both are now applied**.
 
-No change has been made. This section is measurement only.
+- **The gate now runs in release mode.** Steps 4, 5 and 6 run
+  `cargo test --release`, and the mutation step runs `cargo mutants --profile
+  release`. The release profile keeps the overflow checks on, so a wrapping
+  arithmetic bug fails the gate rather than passing in a debug build.
+- **The harness now hashes only `falloutw.exe`, once per process.** The
+  archives are checked by size alone, because their digests were computed and
+  thrown away.
+
+The result:
+
+| Measurement | Before | After |
+|---|---:|---:|
+| All 22 install tests, debug build | 822.5 s | 1.96 s |
+| All 22 install tests, release build | 40.1 s | 1.96 s |
+| The whole gate, steps 1 to 9 | over 8 min | 72 s |
+
+The debug figure is now the same as the release figure, because the cost was
+never the optimisation: it was hashing 496 MB of archives that no test reads.
+
+`overflow-checks = true` was already in `[profile.release]`, in the root
+`Cargo.toml`, since the workspace scaffold. It is in force, and a probe
+compiled with the same profile setting proves it:
+
+| Probe | Result |
+|---|---|
+| `overflow-checks = true` | `panicked: attempt to add with overflow`, exit 101 |
+| `overflow-checks = false` | `sum is 0`, exit 0 |
 
 ## Deviations from the spec
 
-1. **`tools/gate.sh` step 8 was edited without prior owner approval and is
-   awaiting sign-off.** The owner's approval in the task that produced this
-   report named rule 8 of `tools/check_public.sh` specifically. It did not name
-   `tools/gate.sh`, which is a protected path. The edit was:
+1. **`tools/gate.sh` step 8 was edited without prior owner approval.** The
+   owner's approval in the task that produced this report named rule 8 of
+   `tools/check_public.sh` specifically. It did not name `tools/gate.sh`,
+   which is a protected path. The edit was:
 
    ```
    -        if cargo mutants --workspace --dry-run >/dev/null 2>&1; then
@@ -346,8 +429,11 @@ No change has been made. This section is measurement only.
 
    The change was necessary to make the gate run at all: with the old spelling
    step 8 fails on the installed cargo-mutants 27.1.0 and stops every later
-   step. **It still requires the owner's sign-off, and is not treated as
-   approved by this report.**
+   step.
+
+   **The owner has since approved this edit**, together with the other
+   `tools/gate.sh` changes listed below, so it is no longer awaiting
+   sign-off.
 
 2. **`mutants.out/` was tracked.** `git add -A` swept cargo-mutants' per-mutant
    diffs and logs into the tree. Removed and added to `.gitignore` alongside
@@ -366,10 +452,41 @@ No change has been made. This section is measurement only.
    exactly these edits was given in the task. The script has no mechanism to
    record that, so the commit was pushed first and the gate run against it.
 
+5. **Branch protection could not be turned on.** The owner asked for it. GitHub
+   returns HTTP 403 for both the classic protection API and the rulesets API
+   on this repository:
+
+   > Upgrade to GitHub Pro or make this repository public to enable this
+   > feature.
+
+   The repository is private and the account is on the free plan. The cause
+   was verified rather than assumed: on a throwaway **public** repository
+   under the same account, the protection payload the guide asks for applied
+   cleanly and read back as enabled. So the blocker is the repository's
+   visibility.
+
+   Turning it on therefore needs two steps, in this order: purge the history
+   leak, then publish. The leak is described under Open questions. The purge
+   is prepared and verified, and it is **not applied here**, because
+   rewriting published history and publishing the repository are the owner's
+   decisions, not the implementer's.
+
+6. **The history of `main` carries a leak.** Commit `092fbd8` added
+   `mutants.out/` and `mutants.out.old/`, which are cargo-mutants logs holding
+   absolute paths under the owner's home directory. `ad27d64` stopped tracking
+   them and `.gitignore` excludes them, but **109 blobs remain reachable from
+   `origin/main`**. The guide says the repository is public from its first
+   commit and that "git keeps everything ever committed", so the history has
+   to be rewritten before the repository is published. A `git filter-repo`
+   purge that drops those two paths from every commit was run in a throwaway
+   clone and verified: the leaked blob count goes to zero, the commit count
+   and the tree are unchanged, and the messages, authors and dates survive.
+
 ## What was not verified
 
-1. **Gate step 10 did not run.** `RW_MUTANTS` was not 1. The gate result is
-   FAIL and the milestone is open.
+1. **Gate step 10 fails, and the milestone is open.** The step now measures
+   the suite rather than the invocation, and it reports the 85 survivors
+   honestly. Nothing has been approved, so the milestone is not closed.
 
 2. **Group B, 69 mutants, is unverified.** They were not run against the
    install tests. Nothing here claims they are killed and nothing claims they
@@ -380,22 +497,19 @@ No change has been made. This section is measurement only.
 
 4. **Mutation testing on `fo1-dat` and `fo1-exe` with the install present was
    never completed.** At about 1200 s per mutant and 74 plus 164 mutants, the
-   full job is roughly two days of compute.
+   full job is roughly two days of compute. The gate's step 10 runs the
+   synthetic tests, which is what the 85 survivors are measured against.
 
-5. **`tools/check_public.sh` rules 4 and 5 did not run.** `FO1_PRIVATE_TERMS`
-   and `FO1_REF` are unset, so the private-term rule and the Community Edition
-   identifier rule are reported SKIPPED. The hygiene step still passes; it
-   passed with two of its eight rules unable to run.
-
-6. **No separate session reviewed the `tests/` and `crates/fo1-tests/` diff.**
+5. **No separate session reviewed the `tests/` and `crates/fo1-tests/` diff.**
    The previous session changed protected test files and judged its own changes.
    That is a process failure under the guide's role separation and it is not
-   repaired by this report.
+   repaired by this report. The same applies to this session's changes to the
+   same two paths.
 
-7. **The hold-out vectors in `FO1_REF/holdout/` were never run.** They are not
+6. **The hold-out vectors in `FO1_REF/holdout/` were never run.** They are not
    in this environment.
 
-8. **`mutants-allow.md` is empty and nothing has been approved.** The 85
+7. **`mutants-allow.md` is empty and nothing has been approved.** The 85
    survivors are reported, not approved.
 
 ## Open questions
@@ -415,17 +529,19 @@ No change has been made. This section is measurement only.
    `lib.rs:225:9` (`Display for ExeError::fmt`), `lib.rs:513:9`
    (`StatLimit::field0`) and `lib.rs:518:9` (`StatLimit::field1`).
 
-4. **Should gate step 10 now run `cargo mutants --workspace` with a test
-   selection?** As written it selects no test target, so it grades nothing even
-   with `RW_MUTANTS=1`. This is a second protected-path defect, not yet fixed
-   and not covered by the approval that covered step 8.
+4. **Should the history leak be purged, and the repository published?** The
+   owner asked for branch protection on `main` and GitHub will not grant it
+   while the repository is private on a free plan. The guide says the
+   repository is public from its first commit, so publishing is presumably the
+   intent, but publishing publishes the 109 leaked blobs too. The order the
+   owner should set is: purge the history, publish, then protect. The purge
+   is prepared and verified; it has not been applied.
 
-5. **Should the install suites run in release?** Measured above: 822.5 s
-   becomes 40.1 s with no code change. The gate invokes `cargo test` without
-   `--release`, so it pays the debug cost.
+5. **Should the install suites run in release?** Done. Measured above: 822.5 s
+   becomes 1.96 s.
 
-6. **Should `fingerprint()` hash only the file a test reads?** 496 MB per call
-   is computed and discarded. Needs a change to a protected harness file.
+6. **Should `fingerprint()` hash only the file a test reads?** Done. 496 MB per
+   call was computed and discarded.
 
 7. **`fo1-exe` has no synthetic test target.** That is the root cause of the
    69 group-B survivors: the table readers are graded only by `#[ignore]`
@@ -439,14 +555,51 @@ No change has been made. This section is measurement only.
    protection is on for `main`, this task had to push the approved commit to
    `main` before the gate could pass, which inverts the intended order.
 
-9. **`FO1_PRIVATE_TERMS` and `FO1_REF` are undefined**, so hygiene rules 4 and 5
-   report SKIPPED. The private term list must never be committed.
+   The owner asked for branch protection to be turned on. **It could not be,
+   and the reason is the plan, not the payload.** GitHub returns HTTP 403 for
+   both the classic protection API and the rulesets API on this repository:
+
+   > Upgrade to GitHub Pro or make this repository public to enable this
+   > feature.
+
+   The repository is private and the account is on the free plan. The cause was
+   verified rather than assumed: on a throwaway **public** repository under the
+   same account, the protection payload the guide asks for applied cleanly and
+   read back as enabled. The payload carries one approving review, CODEOWNERS
+   review required, admins included, no force pushes, no deletions, linear
+   history, and conversations resolved before merging.
+
+   Turning it on therefore needs the history purge first, then the repository
+   published. **Both are the owner's decisions**: one rewrites published
+   history and the other publishes the code. The purge is prepared and
+   verified, and it has not been applied.
+
+9. **`FO1_PRIVATE_TERMS` and `FO1_REF` are set on this computer.** Both are
+   set at User scope, so every new session has them:
+
+   ```
+   FO1_PRIVATE_TERMS = ...\_rw_private\private-terms.txt
+   FO1_REF            = ...\_rw_private
+   ```
+
+   The private term list holds the owner's names, user name and machine name.
+   The Community Edition identifier list is generated from the CE checkout by a
+   local script and keeps only identifiers **distinctive to CE**: a short or
+   common name would fire on ordinary English words and train people to ignore
+   the check. A first version held 9,916 identifiers and reported 118
+   violations, nearly all of them ordinary words and short substrings. The
+   list now holds 6,350, the check reports 0 violations on this tree, and it
+   still catches a real CE identifier and a real private term.
+
+   With both set, `tools/check_public.sh` runs **all eight rules** instead of
+   six. The private term list and the CE identifier list live outside the
+   repository and are never committed.
 
 10. **A separate review session for the protected-path diff** is outstanding and
     is not something this session can supply.
 
 ## Milestone state
 
-**M0 and M1 remain open.** The gate reports FAIL. Step 10 is skipped, and the
-guide is explicit that a skipped required step fails the gate and that a
-milestone is closed or open with nothing in between.
+**M0 and M1 remain open.** The gate reports FAIL. Step 10 now runs and fails
+on the 85 surviving mutants, and the guide is explicit that a milestone is
+closed or open with nothing in between.
