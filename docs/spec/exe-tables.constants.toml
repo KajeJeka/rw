@@ -26,7 +26,7 @@ value = 1145198565
 unit = "sha256-word-0"
 evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
 claim = "EXETBL-001"
-note = "Bits 0 to 31 of the reference build SHA-256, 0x444257e5, the first four bytes of the digest. Use C003 and C004 together to pin all 32 bytes; this row and C002 split the high word so a partial check can fail fast."
+note = "Bits 0 to 31 of the reference build SHA-256, 0x444257e5, the first four bytes of the digest. This row and C002 split the high 64 bits (C003) so a partial check can fail fast."
 
 [[constant]]
 id = "EXETBL-C002"
@@ -46,11 +46,11 @@ note = "High 64 bits of 444257e5fe91e6c333261aecadacb1f46dbba0319fa0b187de89f369
 
 [[constant]]
 id = "EXETBL-C004"
-value = 3685662948877709812
+value = 16035615580877955698
 unit = "sha256-low-64"
 evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
 claim = "EXETBL-001"
-note = "Low 64 bits of the same digest. C003 and C004 together pin all 32 bytes. Checked before any header parse and before any constant is used."
+note = "Low 64 bits of the same digest, 0xde89f36914f32272, its last eight bytes. With C003 this pins 16 of the digest's 32 bytes, the first eight and the last eight; the digest string in EXETBL-001 carries all 32. Checked before any header parse and before any constant is used."
 
 [[constant]]
 id = "EXETBL-C005"

@@ -102,6 +102,10 @@ name = "synthetic_dat"
 path = "tests/gates/synthetic_dat.rs"
 
 [[test]]
+name = "synthetic_exe"
+path = "tests/gates/synthetic_exe.rs"
+
+[[test]]
 name = "install_archive"
 path = "tests/gates/install_archive.rs"
 

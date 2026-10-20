@@ -145,6 +145,36 @@ const CRITTER_RAW_BLOCKS: u64 = 0;
 /// declared uncompressed size.
 const CHAIN_OUTPUT_BYTES: u64 = 851_322_391;
 
+/// Output bytes the 4,787 stored entries decode to.
+///
+/// A stored entry's output is its own declared uncompressed size, so this is
+/// the sum of the stored half of the corpus. The ledger does not carry it yet;
+/// the figure is the corpus measurement, confirmed by an independent walk over
+/// the archive bytes that does not use the decoder under test.
+const STORED_OUTPUT_BYTES: u64 = 66_934_665;
+
+/// Output bytes the whole corpus decodes to, over all 25,243 entries.
+///
+/// The chain half is `LZSS-C021` and the stored half is
+/// [`STORED_OUTPUT_BYTES`], and the two add up to this. The ledger does not
+/// carry the total yet; the figure is the corpus measurement, confirmed by the
+/// same independent walk.
+const CORPUS_OUTPUT_BYTES: u64 = 918_257_056;
+
+/// Chain entries that hold a raw block and an LZSS block both.
+///
+/// A chain's kind is read per block from the header's bit 15, so a chain can
+/// mix the two kinds. The count is the corpus measurement, confirmed by the
+/// same independent walk. A decoder that stopped testing the header bit per
+/// block would report zero here.
+const MIXED_CHAIN_COUNT: usize = 726;
+
+/// Chain entries that hold a raw block and no LZSS block.
+///
+/// The corpus measurement, confirmed by the same independent walk: every raw
+/// block in the corpus sits in a chain that also holds an LZSS block.
+const RAW_ONLY_CHAIN_COUNT: usize = 0;
+
 /// Block header field 2 at every one of the 66 measured block headers
 /// (`DAT-C003`, DAT-006). The entry trailer width, not a record size.
 const BLOCK_FIELD_2: u32 = 16;
@@ -209,6 +239,47 @@ const TREE_HEADER_WIDTH: usize = 16;
 
 /// Bit 15 of a block header, set on a raw block (`DAT-C050`, DAT-027).
 const BLOCK_RAW_FLAG: u16 = 0x8000;
+
+/// The three loose files whose path matches an archive entry but whose size
+/// does not, so the size match drops them: the path, and `loose - declared`,
+/// which is negative when the loose copy is smaller.
+///
+/// The guide's "Archive gate" section names the three and their exact byte
+/// differences: `GABRIEL.INT` is 26 bytes larger, `KILLIAN.INT` is 14 bytes
+/// smaller and `RAZOR.MSG` is 25 bytes smaller.
+const SIZE_EXCLUSIONS: [(&str, i64); 3] = [
+    ("SCRIPTS\\GABRIEL.INT", 26),
+    ("SCRIPTS\\KILLIAN.INT", -14),
+    ("TEXT\\ENGLISH\\DIALOG\\RAZOR.MSG", -25),
+];
+
+/// Number of names in [`SIZE_EXCLUSIONS`].
+const SIZE_EXCLUSION_COUNT: usize = 3;
+
+/// The five MASTER.DAT entries whose decoded extent runs past the end of the
+/// archive, and the exact number of bytes each one overruns by.
+///
+/// The names and the numbers are `docs/spec/dat.md`'s, claim DAT-021: five
+/// files of the `TEXT\SPANISH\GAME` directory, overrunning by 15228, 39038,
+/// 508, 389 and 785 bytes.
+const MASTER_UNCOMPRESSED_OVERRUNS: [(&str, u64); 5] = [
+    ("TEXT\\SPANISH\\GAME\\PRO_SCEN.MSG", 15_228),
+    ("TEXT\\SPANISH\\GAME\\SCRNAME.MSG", 39_038),
+    ("TEXT\\SPANISH\\GAME\\STAT.MSG", 508),
+    ("TEXT\\SPANISH\\GAME\\TRAIT.MSG", 389),
+    ("TEXT\\SPANISH\\GAME\\WORLDMAP.MSG", 785),
+];
+
+/// The two CRITTER.DAT entries whose decoded extent runs past the end of the
+/// archive, and the exact number of bytes each one overruns by.
+///
+/// `docs/spec/dat.md`, claim DAT-021: `NMPEASRP.FRM` by 7475 bytes and
+/// `RESERVAA.FRM` by 2172. CRITTER.DAT holds one directory, `ART\CRITTERS`, and
+/// every one of its entries keeps that prefix (DAT-003, DAT-011).
+const CRITTER_UNCOMPRESSED_OVERRUNS: [(&str, u64); 2] = [
+    ("ART\\CRITTERS\\NMPEASRP.FRM", 7_475),
+    ("ART\\CRITTERS\\RESERVAA.FRM", 2_172),
+];
 
 /// The three files the harness fingerprints, named here for the scratch fixture
 /// the refusal test builds.
@@ -289,6 +360,15 @@ fn as_u64(value: usize, what: &str) -> u64 {
     match u64::try_from(value) {
         Ok(converted) => converted,
         Err(_) => panic!("{what} does not fit a u64: {value}"),
+    }
+}
+
+/// A length as a signed `i64`, so a difference between two lengths can be
+/// negative.
+fn as_i64(value: usize, what: &str) -> i64 {
+    match i64::try_from(value) {
+        Ok(converted) => converted,
+        Err(_) => panic!("{what} does not fit an i64: {value}"),
     }
 }
 
@@ -497,6 +577,46 @@ fn composed_paths(archive: &DatArchive) -> Vec<String> {
     paths
 }
 
+/// The entries of one archive whose decoded extent runs past the end of the
+/// archive, with the exact number of bytes each one overruns by, and the number
+/// of entries whose *stored* extent runs past the end (DAT-021).
+///
+/// The stored bound is `offset + compressed_size` and the decoded bound is
+/// `offset + uncompressed_size`. Both are measured against the archive's own
+/// length, so what is graded is the file, not the parser's opinion of it.
+fn extent_bounds(entries: &[EntryRecord], length: u64) -> (usize, Vec<(String, u64)>) {
+    let mut compressed_violations = 0usize;
+    let mut overruns: Vec<(String, u64)> = Vec::new();
+    for entry in entries {
+        let offset = as_u64(as_usize(entry.offset, "an entry offset"), "an entry offset");
+        let compressed = as_u64(
+            as_usize(entry.compressed_size, "an entry compressed size"),
+            "an entry compressed size",
+        );
+        let uncompressed = as_u64(
+            as_usize(entry.uncompressed_size, "an entry uncompressed size"),
+            "an entry uncompressed size",
+        );
+        if offset + compressed > length {
+            compressed_violations += 1;
+        }
+        if offset + uncompressed > length {
+            overruns.push((entry.path.clone(), offset + uncompressed - length));
+        }
+    }
+    (compressed_violations, overruns)
+}
+
+/// The expected overruns of one archive, as a sorted list of path and bytes.
+fn expected_overruns(expected: &[(&str, u64)]) -> Vec<(String, u64)> {
+    let mut sorted: Vec<(String, u64)> = expected
+        .iter()
+        .map(|(path, overrun)| ((*path).to_string(), *overrun))
+        .collect();
+    sorted.sort();
+    sorted
+}
+
 /// Walks every chain entry of one archive.
 ///
 /// Returns the chain count and the block census; `walk_chain` asserts the
@@ -526,6 +646,32 @@ fn chain_census(archive: &Archive) -> (usize, ChainCensus) {
         }
     }
     (chains, total)
+}
+
+/// The loose bytes of one composed archive path, or `None` when the patch folder
+/// holds no file at that path.
+///
+/// The composed path uses a backslash, which is a separator on Windows and a
+/// legal character elsewhere, so the segments are split and rejoined with the
+/// platform separator rather than handed over as one string.
+fn loose_bytes(install: &Install, composed: &str) -> Option<Vec<u8>> {
+    let relative: PathBuf = composed.split('\\').collect();
+    step(
+        install.read_loose_file(&relative),
+        "a loose file could not be read",
+    )
+}
+
+/// The declared uncompressed size of one composed path, from the archive that
+/// holds it.
+fn declared_size(path: &str, master: &DatArchive, critter: &DatArchive) -> u32 {
+    match master.find(path) {
+        Some(entry) => entry.uncompressed_size,
+        None => match critter.find(path) {
+            Some(entry) => entry.uncompressed_size,
+            None => panic!("{path}: no archive holds an entry under that path"),
+        },
+    }
 }
 
 // --- DAT-025: the corpus the whole layer hangs from --------------------------
@@ -763,6 +909,113 @@ fn dat_017_stored_and_chain_entries_split_on_their_compressed_size() {
     );
 }
 
+/// DAT-021: the on-disk extent of an entry is bounded by its compressed size.
+///
+/// `offset + compressed_size` never runs past the end of the archive, for any of
+/// the 25,243 entries in both archives. The decoded extent,
+/// `offset + uncompressed_size`, does run past it for seven entries, and those
+/// seven are exactly the files the spec names, with the exact number of bytes
+/// each one overruns by. A reader that bounded a stored region by the
+/// uncompressed size would reject all seven (`docs/spec/dat.md`, DAT-021).
+///
+/// The corpus walk is the production parse; the seven entries are cross-checked
+/// against the independent reference walk (oracle class 4), so a parser that
+/// reported a wrong offset fails here instead of passing a self-consistent but
+/// wrong answer.
+#[test]
+#[ignore = "needs FO1_DATA"]
+fn dat_021_the_stored_extent_is_bounded_by_the_compressed_size() {
+    let install = install();
+    let trees = trees_from(&install);
+
+    let master_length = install.master_dat().bytes;
+    let critter_length = install.critter_dat().bytes;
+
+    let (master_violations, master_overruns) = extent_bounds(trees.master.entries(), master_length);
+    let (critter_violations, critter_overruns) =
+        extent_bounds(trees.critter.entries(), critter_length);
+
+    assert_eq!(
+        trees.master.entries().len() + trees.critter.entries().len(),
+        CORPUS_ENTRIES,
+        "entries walked across both archives"
+    );
+    assert_eq!(
+        trees.master_ref.entries_total() + trees.critter_ref.entries_total(),
+        CORPUS_ENTRIES,
+        "entries walked, reference walk"
+    );
+    assert_eq!(
+        master_violations + critter_violations,
+        0,
+        "entries whose stored extent runs past the end of their archive"
+    );
+
+    let mut measured_master = master_overruns;
+    let mut measured_critter = critter_overruns;
+    measured_master.sort();
+    measured_critter.sort();
+
+    assert_eq!(
+        measured_master.len(),
+        MASTER_UNCOMPRESSED_OVERRUNS.len(),
+        "MASTER.DAT entries whose decoded extent runs past the end of the archive"
+    );
+    assert_eq!(
+        measured_critter.len(),
+        CRITTER_UNCOMPRESSED_OVERRUNS.len(),
+        "CRITTER.DAT entries whose decoded extent runs past the end of the archive"
+    );
+    assert_eq!(
+        measured_master,
+        expected_overruns(&MASTER_UNCOMPRESSED_OVERRUNS),
+        "the MASTER.DAT entries that overrun, and by how many bytes"
+    );
+    assert_eq!(
+        measured_critter,
+        expected_overruns(&CRITTER_UNCOMPRESSED_OVERRUNS),
+        "the CRITTER.DAT entries that overrun, and by how many bytes"
+    );
+
+    // Oracle class 4: the independent reference walk puts the same seven entries
+    // at the same offsets, and all seven are chain entries, so the overrun is a
+    // fact about the file and not about one reader's opinion of it (DAT-016).
+    for (path, overrun) in MASTER_UNCOMPRESSED_OVERRUNS {
+        let entry = step(
+            trees.master_ref.find(path),
+            "the reference walk has no such MASTER.DAT path",
+        );
+        let offset = as_u64(as_usize(entry.offset, "an entry offset"), "an entry offset");
+        let uncompressed = as_u64(
+            as_usize(entry.uncompressed_size, "an entry uncompressed size"),
+            "an entry uncompressed size",
+        );
+        assert_eq!(
+            offset + uncompressed,
+            master_length + overrun,
+            "{path}: the reference walk puts the decoded extent exactly {overrun} bytes past the end of MASTER.DAT"
+        );
+        assert_eq!(entry.mode(), 0x40, "{path}: the entry is a block chain");
+    }
+    for (path, overrun) in CRITTER_UNCOMPRESSED_OVERRUNS {
+        let entry = step(
+            trees.critter_ref.find(path),
+            "the reference walk has no such CRITTER.DAT path",
+        );
+        let offset = as_u64(as_usize(entry.offset, "an entry offset"), "an entry offset");
+        let uncompressed = as_u64(
+            as_usize(entry.uncompressed_size, "an entry uncompressed size"),
+            "an entry uncompressed size",
+        );
+        assert_eq!(
+            offset + uncompressed,
+            critter_length + overrun,
+            "{path}: the reference walk puts the decoded extent exactly {overrun} bytes past the end of CRITTER.DAT"
+        );
+        assert_eq!(entry.mode(), 0x40, "{path}: the entry is a block chain");
+    }
+}
+
 /// DAT-022 and DAT-020: for all 20,456 chains the block headers account for the
 /// compressed size exactly, and the block census is the measured one.
 ///
@@ -835,19 +1088,32 @@ fn dat_022_every_block_chain_consumes_exactly_its_compressed_size() {
     );
 
     // A raw block sits inside a chain entry, so the kind is read per block and
-    // not per chain (DAT-020). At least one MASTER.DAT chain mixes both.
+    // not per chain (DAT-020). The exact counts of the two kinds are asserted,
+    // over the whole corpus, so a reader that stopped testing the header bit
+    // per block fails on a number and not on a non-zero check.
     let mut mixed = 0usize;
-    for entry in master.tree.entries() {
-        if matches!(payload_mode(entry.flags), PayloadMode::BlockChain) {
-            let census = walk_chain(&master.bytes, entry);
-            if census.raw_blocks != 0 && census.lzss_blocks != 0 {
-                mixed += 1;
+    let mut raw_only = 0usize;
+    for archive in [&master, &critter] {
+        for entry in archive.tree.entries() {
+            if matches!(payload_mode(entry.flags), PayloadMode::BlockChain) {
+                let census = walk_chain(&archive.bytes, entry);
+                if census.raw_blocks != 0 && census.lzss_blocks != 0 {
+                    mixed += 1;
+                } else if census.raw_blocks != 0 {
+                    raw_only += 1;
+                }
             }
         }
     }
-    assert_ne!(
-        mixed, 0,
-        "at least one MASTER.DAT chain mixes raw and LZSS blocks"
+    assert_eq!(
+        mixed, MIXED_CHAIN_COUNT,
+        "DAT-020: chain entries that hold a raw block and an LZSS block both, over \
+         the whole corpus"
+    );
+    assert_eq!(
+        raw_only, RAW_ONLY_CHAIN_COUNT,
+        "DAT-020: chain entries that hold a raw block and no LZSS block, over the \
+         whole corpus"
     );
 }
 
@@ -940,7 +1206,9 @@ fn dat_020_chain_stats_totals_equal_the_framing_census() {
 ///
 /// Measured on the reference install: the 20,456 chain entries produce
 /// 851,322,391 bytes and the 4,787 stored entries produce their own declared
-/// sizes, for 918,257,056 bytes over all 25,243 entries.
+/// sizes, for 918,257,056 bytes over all 25,243 entries. All three totals are
+/// asserted here, so a decoder that produced a different number of bytes while
+/// still producing the right length for every entry fails.
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_023_every_entry_decodes_to_its_declared_uncompressed_size() {
@@ -951,6 +1219,7 @@ fn dat_023_every_entry_decodes_to_its_declared_uncompressed_size() {
     let mut checked = 0usize;
     let mut produced_total = 0u64;
     let mut chain_produced = 0u64;
+    let mut stored_produced = 0u64;
 
     for archive in [&master, &critter] {
         for entry in archive.tree.entries() {
@@ -972,6 +1241,8 @@ fn dat_023_every_entry_decodes_to_its_declared_uncompressed_size() {
             produced_total += produced;
             if matches!(payload_mode(entry.flags), PayloadMode::BlockChain) {
                 chain_produced += produced;
+            } else {
+                stored_produced += produced;
             }
             checked += 1;
         }
@@ -984,6 +1255,20 @@ fn dat_023_every_entry_decodes_to_its_declared_uncompressed_size() {
     assert_eq!(
         chain_produced, CHAIN_OUTPUT_BYTES,
         "chain output bytes, the figure docs/spec/lzss.md measured"
+    );
+    assert_eq!(
+        stored_produced, STORED_OUTPUT_BYTES,
+        "stored output bytes, the sum of the stored entries' declared sizes"
+    );
+    assert_eq!(
+        produced_total, CORPUS_OUTPUT_BYTES,
+        "output bytes over every entry of both archives, the chain half and the \
+         stored half added together"
+    );
+    assert_eq!(
+        chain_produced + stored_produced,
+        produced_total,
+        "the chain half and the stored half add up to the corpus total"
     );
     assert_eq!(
         STORED_ENTRIES + CHAIN_ENTRIES,
@@ -1208,6 +1493,50 @@ fn dat_029_real_lookups_return_the_measured_entries() {
     );
 }
 
+/// The three loose files whose size does not match their archive entry, listed
+/// by name with their exact byte difference.
+///
+/// The guide's "Archive gate" section names the three: `GABRIEL.INT` is 26
+/// bytes larger, `KILLIAN.INT` is 14 bytes smaller and `RAZOR.MSG` is 25 bytes
+/// smaller. A loose file whose path matches an archive entry but whose length
+/// does not is dropped by the size match, so it never becomes a candidate;
+/// listing it with its exact difference is the alternative to a silent skip.
+///
+/// The three names and the three differences are asserted one by one, so a set
+/// that grew, shrank or carried the wrong sign fails.
+///
+/// claim: DAT-028
+/// oracle: class 2 (closure on real data: the loose file and the archive entry
+/// are read from the install) and class 5 (the exact byte differences the
+/// guide's "Archive gate" section writes down)
+#[test]
+#[ignore = "needs FO1_DATA"]
+fn dat_028_the_three_loose_size_exclusions_are_exact() {
+    let install = install();
+    let trees = trees_from(&install);
+
+    let mut excluded = 0usize;
+    for (path, expected_difference) in SIZE_EXCLUSIONS {
+        let loose = present(
+            loose_bytes(&install, path),
+            "a size exclusion has no loose copy in the patch folder",
+        );
+        let declared = declared_size(path, &trees.master, &trees.critter);
+        let difference = as_i64(loose.len(), "a loose file's length")
+            - as_i64(
+                as_usize(declared, "a declared uncompressed size"),
+                "a declared uncompressed size",
+            );
+        assert_eq!(
+            difference, expected_difference,
+            "{path}: the loose file's length minus the archive entry's declared \
+             uncompressed size"
+        );
+        excluded += 1;
+    }
+    assert_eq!(excluded, SIZE_EXCLUSION_COUNT, "size exclusions listed");
+}
+
 /// LZSS-013 and LZSS-014: a stream one byte short and a stream one byte long
 /// each return an error.
 ///
@@ -1391,8 +1720,14 @@ fn the_install_fingerprint_is_exact() {
     );
 }
 
-/// The gate is only as good as its refusal. This proves the harness rejects an
-/// install whose executable is not the reference one.
+/// DAT-025: the gate is only as good as its refusal. This proves the harness
+/// rejects an install whose executable is not the reference one.
+///
+/// DAT-025 pins the counts and the sizes for this install and says what
+/// happens on any other one: the gate reports `unsupported install` and does
+/// not relax them. The fingerprint test above pins the accepted side; this
+/// test pins the refused side, so a harness that stopped checking would fail
+/// here instead of quietly grading a foreign install.
 ///
 /// The fixture is a directory of deliberately small files named after the three
 /// install files, created under the platform temp directory and removed again.

@@ -123,6 +123,10 @@ const PLAYER_STAT_LIMIT_COUNT: usize = 5;
 /// Value count in the XP thresholds table, levels 0 through 20 (EXETBL-C413).
 const XP_THRESHOLD_COUNT: usize = 21;
 
+/// Byte offset one past the last XP threshold entry, which is where a level
+/// beyond the table would have started (EXETBL-009).
+const XP_THRESHOLDS_END_OFFSET: usize = XP_THRESHOLD_COUNT * I32_SIZE;
+
 /// The factor the guide applies to an XP threshold. The bytes carry unscaled
 /// triangular numbers, so the scaling belongs to the caller (EXETBL-009).
 const XP_SCALE: i32 = 1_000;
@@ -130,10 +134,6 @@ const XP_SCALE: i32 = 1_000;
 /// Origin label the little-endian cursor carries, so a failure inside the
 /// executable layer names the executable rather than some other buffer.
 const ORIGIN_EXECUTABLE: &str = "falloutw.exe executable layer";
-
-/// The `.bss` marker, recorded so a refusal can say which section's rule
-/// applied. Never a table value.
-const UNMAPPED_SECTION: &str = "no section holds this address";
 
 /// One PE section header.
 ///
@@ -197,7 +197,7 @@ pub enum ExeError {
     },
     /// A record field fell outside the record that was read.
     FieldOutOfRange {
-        /// Offset inside the record the refused field would have started at.
+        /// Byte offset at which the refused field would have started.
         offset: usize,
         /// Static label of the field.
         field: &'static str,
@@ -230,10 +230,7 @@ impl fmt::Display for ExeError {
                 )
             }
             Self::Unmapped { va } => {
-                write!(
-                    formatter,
-                    "virtual address 0x{va:08X} is in {UNMAPPED_SECTION}"
-                )
+                write!(formatter, "virtual address 0x{va:08X} is in no section")
             }
             Self::RangeOverflow { va } => {
                 write!(formatter, "address arithmetic overflowed for 0x{va:08X}")
@@ -248,7 +245,7 @@ impl fmt::Display for ExeError {
             Self::FieldOutOfRange { offset, field } => {
                 write!(
                     formatter,
-                    "field {field} at file offset 0x{offset:X} is outside the record"
+                    "field {field} at byte offset 0x{offset:X} is outside the record"
                 )
             }
             Self::RecordCount {
@@ -712,20 +709,22 @@ pub fn xp_thresholds(image: &PeImage<'_>) -> Result<[i32; 21], ExeError> {
 ///
 /// `checked_mul` because the scaled value overflows `i32` for a high enough
 /// level and a wrapped total would hand out free levels. A level outside the
-/// table is an error rather than a clamped read.
+/// table is an error rather than a clamped read. A negative level names no
+/// entry and no offset, so it is refused as an overflow of the table's address;
+/// a level past the end is refused with the byte offset its entry would have
+/// started at.
 pub fn experience_for_level(
     thresholds: &[i32; XP_THRESHOLD_COUNT],
     level: i32,
 ) -> Result<i32, ExeError> {
-    let index = usize::try_from(level).map_err(|_| ExeError::FieldOutOfRange {
-        offset: XP_THRESHOLD_COUNT,
-        field: "level",
+    let index = usize::try_from(level).map_err(|_| ExeError::RangeOverflow {
+        va: XP_THRESHOLDS_VA,
     })?;
     let base = thresholds
         .get(index)
         .copied()
         .ok_or(ExeError::FieldOutOfRange {
-            offset: XP_THRESHOLD_COUNT,
+            offset: XP_THRESHOLDS_END_OFFSET,
             field: "level",
         })?;
     base.checked_mul(XP_SCALE).ok_or(ExeError::RangeOverflow {

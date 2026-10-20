@@ -56,8 +56,11 @@
 //!
 //! This file is EXPECTED NOT TO COMPILE until `fo1-exe` exists. A gate test
 //! written before the implementation is what makes "fail before, pass after"
-//! meaningful, and a compile error counts as a failure. Every test is
-//! `#[ignore]`d until `FO1_DATA` names the reference install.
+//! meaningful, and a compile error counts as a failure. Every test that reads
+//! the install is `#[ignore]`d until `FO1_DATA` names it; the one test that
+//! needs no install at all, the digest-first refusal of two synthetic buffers,
+//! runs in the default test run, because the rule it proves is that the digest
+//! is checked before any header is read.
 
 // Gate tests are test code. `clippy.toml` sets `allow-unwrap-in-tests` and its
 // siblings, which cover a `#[cfg(test)]` module or a `#[test]` function body.
@@ -104,6 +107,15 @@ const SHORT_BUFFER_LEN: usize = 64;
 /// Short synthetic buffers refused, one short of a PE header and one short of
 /// nothing at all.
 const SHORT_BUFFER_CASES: usize = 2;
+
+/// SHA-256 of the reference executable with one bit flipped in its last byte.
+///
+/// The fixture the digest gate must refuse, and the digest the refusal has to
+/// name. Measured with an independent SHA-256 over the reference bytes with the
+/// last byte's low bit set, so the expected message below is not taken from the
+/// reader under test (EXETBL-001).
+const FOREIGN_BUILD_SHA256_HEX: &str =
+    "9d3bdd5675a1fbf9e02dc97f01f207bca935199e3b0b9f7475105cfd654098f6";
 
 // --- the PE32 rejection --------------------------------------------------------
 
@@ -670,6 +682,36 @@ const LAST_DGROUP_VA: u32 = PAST_DGROUP_VA - ONE_ADDRESS;
 /// Total refusals the totality walk drives.
 const TOTALITY_CASE_COUNT: usize = 7;
 
+/// The file offset of the last byte of `DGROUP` raw data: 0x11D9FF.
+///
+/// `DGROUP`'s raw data ends at 0x11DA00, so its last byte is the one before,
+/// and a read that starts there and asks for two bytes is the crossing the
+/// totality walk has to refuse.
+const DGROUP_LAST_FILE_OFFSET: usize = DGROUP_RAW_END - 1;
+
+/// The file offset the wider crossing read starts at: the byte before the last
+/// one of `DGROUP`, so it has three bytes of section left and still runs past
+/// the boundary.
+const DGROUP_CROSSING_FILE_OFFSET: usize = DGROUP_LAST_FILE_OFFSET - 1;
+
+/// The seven cases the totality walk drives and the outcome each one must have.
+///
+/// The expected list is written out case by case, so a refusal for the wrong
+/// reason fails instead of merely refusing. `Ok` is the success a variant list
+/// cannot name; it is the same word the other gates use for it.
+const EXPECTED_TOTALITY_OUTCOMES: [(&str, &str); TOTALITY_CASE_COUNT] = [
+    ("an address below the image base", "Unmapped"),
+    ("an address past the end of DGROUP raw data", "Unmapped"),
+    ("the last byte of DGROUP", "Ok"),
+    ("a two byte read at the last byte of DGROUP", "OutsideFile"),
+    ("a three byte read two bytes earlier", "OutsideFile"),
+    ("the last byte of the file", "Ok"),
+    (
+        "a two byte read at the last byte of the file",
+        "OutsideFile",
+    ),
+];
+
 /// How far before the end of DGROUP the wider crossing read starts, so it has
 /// three bytes of DGROUP left and runs further past the boundary than the one byte
 /// case does.
@@ -717,6 +759,22 @@ const DOS_MAGIC: [u8; TWO_BYTES] = *b"MZ";
 /// The rule the `.bss` refusals are held to, written out so the assertion reads
 /// as a rule and not as a bare `true`.
 const BSS_READ_MUST_BE_REFUSED: bool = true;
+
+// --- the error payloads, EXETBL-001 and EXETBL-002 ------------------------------
+
+/// Length of the synthetic buffer that is too short to hold the `e_lfanew`
+/// field at offset 0x3C, so the header reader refuses it by name and by offset.
+const TRUNCATED_HEADER_LEN: usize = 32;
+
+/// The field label the spec fixes for a header field that is not in the buffer.
+const FIELD_E_LFANEW: &str = "e_lfanew";
+
+/// Records a `RecordCount` refusal says it read where the shape declares 38.
+const RECORD_COUNT_OBSERVED: usize = STAT_LIMIT_COUNT - 1;
+
+/// A length no address arithmetic can hold, so the reader has to refuse the
+/// request rather than wrap it.
+const UNREPRESENTABLE_LENGTH: usize = usize::MAX;
 
 // --- the bit flip corpus -------------------------------------------------------
 
@@ -877,6 +935,23 @@ fn reference_exe_bytes() -> Vec<u8> {
 /// The reference image, admitted only after the digest gate.
 fn reference_image(bytes: &[u8]) -> Result<PeImage<'_>, ExeError> {
     PeImage::require_reference_build(bytes)
+}
+
+/// The reference executable with one bit flipped in its last byte.
+///
+/// The fixture the digest gate must refuse. The flip is written back
+/// explicitly, because `^` yields a value and does not store through the place
+/// expression; without the write back the fixture was byte identical to the
+/// reference build and the gate below was handed the reference build.
+fn foreign_build_bytes(bytes: &[u8]) -> Vec<u8> {
+    let mut mutated = bytes.to_vec();
+    let last = mutated
+        .len()
+        .checked_sub(FOREIGN_BUILD_LAST_BYTE_FROM_END)
+        .expect("the reference build is never empty");
+    let flipped = *mutated.get_mut(last).expect("the last byte is there") ^ FOREIGN_BUILD_BIT_MASK;
+    mutated[last] = flipped;
+    mutated
 }
 
 /// `PointerToRawData + (va - ImageBase - VirtualAddress)` for an address inside
@@ -1053,25 +1128,18 @@ fn install_gate_rejects_an_executable_with_one_bit_flipped() {
     // One bit, in the last byte of the file. That byte lies in `.rsrc` raw data,
     // behind every header the reader parses, so the flip leaves the headers
     // readable and the digest different: the gate is what has to catch it.
-    let mut mutated = bytes.clone();
+    let mutated = foreign_build_bytes(&bytes);
     let last = mutated
         .len()
         .checked_sub(FOREIGN_BUILD_LAST_BYTE_FROM_END)
         .expect("the reference build is never empty");
-    let before = mutated
-        .get(last)
-        .expect("the last byte is there")
-        .to_owned();
-    let flipped = *mutated.get_mut(last).expect("the last byte is there") ^ FOREIGN_BUILD_BIT_MASK;
+    let before = bytes.get(last).expect("the last byte is there").to_owned();
+    let flipped = *mutated.get(last).expect("the last byte is there");
     assert_ne!(
         flipped, before,
         "EXETBL-001: the fixture really did flip a bit rather than write the same \
          byte twice"
     );
-    // `^` yields a value and does not store through the place expression, so the
-    // flip has to be written back explicitly. Without this line `mutated` was
-    // byte-identical to `bytes` and the gate below was handed the reference build.
-    mutated[last] = flipped;
     assert_eq!(
         mutated.len(),
         bytes.len(),
@@ -1088,6 +1156,23 @@ fn install_gate_rejects_an_executable_with_one_bit_flipped() {
         "EXETBL-001: the refusal is a build mismatch, not a header complaint"
     );
 
+    // EXETBL-001: the refusal has to name the expected and the observed digest,
+    // and the spec fixes the wording of that message (docs/spec/exe-tables.md,
+    // the `impl fmt::Display` block). The whole text is asserted, character for
+    // character, because a message that printed nothing, or printed the two
+    // digests in the wrong order or under the wrong names, would still name two
+    // digests and still be wrong.
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "executable digest {FOREIGN_BUILD_SHA256_HEX} is not the reference build \
+             {EXPECTED_SHA256_HEX}; this build's table constants are unknown and are \
+             not guessed"
+        ),
+        "EXETBL-001: the refusal names the observed digest and the reference digest, \
+         in the spec's exact words"
+    );
+
     // The headers still parse. A gate that refused here would be refusing a parse
     // failure rather than a digest, which is a different test.
     assert_eq!(
@@ -1102,7 +1187,6 @@ fn install_gate_rejects_an_executable_with_one_bit_flipped() {
 /// oracle: class 5 (hand computed vector from the implementation guide: the digest \
 /// is checked first, before any header parse)
 #[test]
-#[ignore = "needs FO1_DATA: the reference install's falloutw.exe"]
 fn install_gate_refuses_two_short_buffers_before_touching_a_header() {
     // Neither buffer holds a DOS header, a PE signature or an optional header at
     // all. A reader that parsed before it hashed would report `Header` here; the
@@ -2568,14 +2652,19 @@ fn install_read_va_is_total_over_length_and_over_address() {
 
     // The last byte of DGROUP raw data still reads, which is what makes the
     // refusal below a boundary rather than a blanket rejection.
-    let dgroup_last = image
-        .read_va(LAST_DGROUP_VA, ONE_BYTE)
-        .expect("the last byte of DGROUP raw data is readable");
+    let dgroup_last = image.read_va(LAST_DGROUP_VA, ONE_BYTE);
+    let dgroup_last_len = match &dgroup_last {
+        Ok(bytes) => bytes.len(),
+        Err(error) => panic!(
+            "EXETBL-002: the last byte of DGROUP raw data was refused with {}",
+            exe_error_name(error)
+        ),
+    };
     assert_eq!(
-        dgroup_last.len(),
-        ONE_BYTE,
+        dgroup_last_len, ONE_BYTE,
         "EXETBL-002: the last byte of the section reads as one byte"
     );
+    let dgroup_last_name = result_name(dgroup_last, exe_error_name);
 
     // The bound is PER SECTION, not per file, and this is the read that says so.
     // `LAST_DGROUP_VA` is the last byte DGROUP owns and it reads, but a two byte
@@ -2583,41 +2672,67 @@ fn install_read_va_is_total_over_length_and_over_address() {
     // `.idata`, whose raw pointer 0x11DA00 is exactly DGROUP's raw end. A reader
     // that bounds only the file returns those bytes and a caller has no way to
     // tell them from DGROUP's own, so the read has to be refused.
-    let crossing = result_name(image.read_va(LAST_DGROUP_VA, TWO_BYTES), exe_error_name);
-    assert_ne!(
-        crossing, "Ok",
-        "EXETBL-002: a two byte read at the last byte of DGROUP is refused, \
-         because the bound is the containing section's raw extent. It answered \
-         `Err({crossing})`. A reader that bounds only the file returns `Ok` here \
-         and hands back `.idata` bytes wearing DGROUP's address."
+    //
+    // The refusal is asserted with its whole value, not only with its name: the
+    // offset it carries is where the read would have started, and the length is
+    // what it asked for. A reader that refused for some other reason, or that
+    // refused at the wrong offset, fails here.
+    let crossing = image.read_va(LAST_DGROUP_VA, TWO_BYTES);
+    let crossing_error = match crossing {
+        Ok(_) => panic!(
+            "EXETBL-002: a two byte read at the last byte of DGROUP was admitted, \
+             because the bound is the containing section's raw extent"
+        ),
+        Err(error) => error,
+    };
+    assert_eq!(
+        crossing_error,
+        ExeError::OutsideFile {
+            offset: DGROUP_LAST_FILE_OFFSET,
+            len: TWO_BYTES,
+        },
+        "EXETBL-002: a two byte read at the last byte of DGROUP is refused at the \
+         file offset it would have started at, with the length it asked for"
     );
 
     // The same crossing one byte earlier, so the refusal is a range check and not
     // one hand picked address. Three bytes from the same place run further past
     // the boundary and are refused for the same reason.
-    let crossing_wider = result_name(
-        image.read_va(LAST_DGROUP_VA - DGROUP_CROSSING_MARGIN, THREE_BYTES),
-        exe_error_name,
-    );
-    assert_ne!(
-        crossing_wider, "Ok",
-        "EXETBL-002: and three bytes from two bytes earlier is refused as well, so \
-         the boundary is checked on the whole window rather than on its last byte. \
-         It answered `Err({crossing_wider})`."
+    let crossing_wider = image.read_va(LAST_DGROUP_VA - DGROUP_CROSSING_MARGIN, THREE_BYTES);
+    let crossing_wider_error = match crossing_wider {
+        Ok(_) => panic!(
+            "EXETBL-002: a three byte read two bytes before the end of DGROUP was \
+             admitted, so the boundary is not checked on the whole window"
+        ),
+        Err(error) => error,
+    };
+    assert_eq!(
+        crossing_wider_error,
+        ExeError::OutsideFile {
+            offset: DGROUP_CROSSING_FILE_OFFSET,
+            len: THREE_BYTES,
+        },
+        "EXETBL-002: and three bytes from two bytes earlier is refused the same \
+         way, one byte earlier in the file and with the length it asked for"
     );
 
     // The last byte of the file, and then one byte more than the file holds. The
     // `.rsrc` section's raw data ends exactly at the end of the file, so this is
     // the one place where crossing the end of the containing section and crossing
     // the end of the file are the same event.
-    let file_last = image
-        .read_va(RSRC_LAST_VA, ONE_BYTE)
-        .expect("the last byte of the file is readable");
+    let file_last = image.read_va(RSRC_LAST_VA, ONE_BYTE);
+    let file_last_len = match &file_last {
+        Ok(bytes) => bytes.len(),
+        Err(error) => panic!(
+            "EXETBL-002: the last byte of the file was refused with {}",
+            exe_error_name(error)
+        ),
+    };
     assert_eq!(
-        file_last.len(),
-        ONE_BYTE,
+        file_last_len, ONE_BYTE,
         "EXETBL-002: the last byte of the file reads as one byte"
     );
+    let file_last_name = result_name(file_last, exe_error_name);
     let past_file = image.read_va(RSRC_LAST_VA, TWO_BYTES);
     let past_file_error = match past_file {
         Ok(_) => panic!("EXETBL-002: a read one byte past the end of the file was admitted"),
@@ -2629,20 +2744,52 @@ fn install_read_va_is_total_over_length_and_over_address() {
         "EXETBL-002: a read that runs past the end of the file is refused as such"
     );
 
-    // Five refusals and two successes, all driven.
+    // The seven cases, each with the outcome it must have. The expected list is
+    // written out case by case and compared with what the walk actually
+    // produced, so a case that refused for the wrong reason fails instead of
+    // merely refusing.
     assert_eq!(
         TOTALITY_CASE_COUNT, 7,
         "EXETBL-002: the walk drives seven cases"
     );
-    let mut refusals = 0usize;
-    let mut successes = 0usize;
-    refusals += 1;
-    refusals += 1;
-    successes += 1;
-    refusals += 1;
-    refusals += 1;
-    successes += 1;
-    refusals += 1;
+    let outcomes: [(&str, &str); TOTALITY_CASE_COUNT] = [
+        (
+            "an address below the image base",
+            exe_error_name(&below_error),
+        ),
+        (
+            "an address past the end of DGROUP raw data",
+            exe_error_name(&gap_error),
+        ),
+        ("the last byte of DGROUP", dgroup_last_name),
+        (
+            "a two byte read at the last byte of DGROUP",
+            exe_error_name(&crossing_error),
+        ),
+        (
+            "a three byte read two bytes earlier",
+            exe_error_name(&crossing_wider_error),
+        ),
+        ("the last byte of the file", file_last_name),
+        (
+            "a two byte read at the last byte of the file",
+            exe_error_name(&past_file_error),
+        ),
+    ];
+    assert_eq!(
+        outcomes, EXPECTED_TOTALITY_OUTCOMES,
+        "EXETBL-002: the seven cases and the outcome each one must have"
+    );
+
+    // Five refusals and two successes, counted from what the walk produced.
+    let refusals = outcomes
+        .iter()
+        .filter(|(_, outcome)| *outcome != "Ok")
+        .count();
+    let successes = outcomes
+        .iter()
+        .filter(|(_, outcome)| *outcome == "Ok")
+        .count();
     assert_eq!(
         refusals, 5,
         "EXETBL-002: two unmapped addresses, two reads crossing the end of \
@@ -2666,6 +2813,206 @@ fn install_read_va_is_total_over_length_and_over_address() {
         bytes.len(),
         usize::try_from(EXPECTED_EXE_BYTES).expect("the reference size fits a usize"),
         "EXETBL-002: the refusals above left the caller's own bytes untouched"
+    );
+}
+
+/// Every `ExeError` carries the payload the spec fixes for it, and renders the
+/// message the spec writes down.
+///
+/// claim: EXETBL-001, EXETBL-002
+/// oracle: class 1 (bytes of the original executable) and class 5 (the messages
+/// the spec's `impl fmt::Display` block writes down, character for character)
+///
+/// The variant set is the spec's own decision (`docs/spec/exe-tables.md`, the
+/// `impl fmt::Display` block), and the messages are quoted there character for
+/// character. A reader that filled a variant with zeros, or that printed
+/// nothing, or that printed the fields in another order, would still answer
+/// `Err` and would still pass a test that only names the variant, so the whole
+/// value and the whole message are asserted here.
+///
+/// The `Unmapped` message is the spec's, word for word, and the implementation
+/// renders it: the spec writes "virtual address 0x{va:08X} is in no section"
+/// (`docs/spec/exe-tables.md:645`) and the implementation writes the same
+/// (`crates/fo1-exe/src/lib.rs:233`). The message is therefore asserted here in
+/// full, like the other five.
+#[test]
+#[ignore = "needs FO1_DATA: the reference install's falloutw.exe"]
+fn install_every_exe_error_carries_the_payload_and_the_message_the_spec_fixes() {
+    let bytes = reference_exe_bytes();
+    let image = reference_image(&bytes).expect("the reference build passes the digest gate");
+
+    // The twin of every refusal below: the reference build itself is admitted
+    // and its headers parse, so the refusals are about the case and not about
+    // the install.
+    assert_eq!(
+        result_name(PeImage::parse(&bytes), exe_error_name),
+        "Ok",
+        "EXETBL-001: the reference build's headers parse"
+    );
+    assert_eq!(
+        result_name(
+            image.read_va(HIT_LOCATION_PENALTY_VA, ONE_BYTE),
+            exe_error_name
+        ),
+        "Ok",
+        "EXETBL-002: and a mapped address reads, so the refusals below are about \
+         the case and not about the reader refusing everything"
+    );
+
+    // Header: a PE32+ optional header moves ImageBase, so it is refused by name
+    // and by offset. The offset is the optional header, 0x80 plus 24.
+    let mut pe32_plus = bytes.clone();
+    write_u16_at(
+        &mut pe32_plus,
+        OPTIONAL_MAGIC_OFFSET,
+        PE32_PLUS_OPTIONAL_MAGIC,
+    );
+    let header_error = match PeImage::parse(&pe32_plus) {
+        Ok(_) => panic!("EXETBL-002: a PE32+ optional header was accepted"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        header_error,
+        ExeError::Header {
+            offset: OPTIONAL_MAGIC_OFFSET,
+            field: FIELD_OPTIONAL_MAGIC,
+        },
+        "EXETBL-002: the refusal names the optional header magic and the file \
+         offset it sits at"
+    );
+    assert_eq!(
+        header_error.to_string(),
+        format!(
+            "bad PE header field {FIELD_OPTIONAL_MAGIC} at file offset 0x{OPTIONAL_MAGIC_OFFSET:X}"
+        ),
+        "EXETBL-002: and the message is the spec's, word for word"
+    );
+
+    // FieldOutOfRange: a buffer too short to hold the `e_lfanew` field at 0x3C.
+    let truncated = vec![0u8; TRUNCATED_HEADER_LEN];
+    let field_error = match PeImage::parse(&truncated) {
+        Ok(_) => panic!("EXETBL-002: a buffer too short for a header field was accepted"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        field_error,
+        ExeError::FieldOutOfRange {
+            offset: DOS_E_LFANEW_OFFSET,
+            field: FIELD_E_LFANEW,
+        },
+        "EXETBL-002: the refusal names the field that is not in the buffer and \
+         the offset it would have been read from"
+    );
+    assert_eq!(
+        field_error.to_string(),
+        format!(
+            "field {FIELD_E_LFANEW} at byte offset 0x{DOS_E_LFANEW_OFFSET:X} is \
+             outside the record"
+        ),
+        "EXETBL-002: and the message is the spec's, word for word"
+    );
+
+    // Unmapped: an address below the image base is in no section.
+    let unmapped_error = match image.read_va(BELOW_IMAGE_BASE_VA, ONE_BYTE) {
+        Ok(_) => panic!("EXETBL-002: an address below the image base was admitted"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        unmapped_error,
+        ExeError::Unmapped {
+            va: BELOW_IMAGE_BASE_VA,
+        },
+        "EXETBL-002: the refusal carries the address that no section covers"
+    );
+    assert_eq!(
+        unmapped_error.to_string(),
+        format!("virtual address 0x{BELOW_IMAGE_BASE_VA:08X} is in no section"),
+        "EXETBL-002: and the message is the spec's, word for word"
+    );
+
+    // RangeOverflow: a length no address arithmetic can hold.
+    let overflow_error = match image.read_va(XP_THRESHOLDS_VA, UNREPRESENTABLE_LENGTH) {
+        Ok(_) => panic!("EXETBL-002: a length no arithmetic can hold was admitted"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        overflow_error,
+        ExeError::RangeOverflow {
+            va: XP_THRESHOLDS_VA,
+        },
+        "EXETBL-002: the refusal carries the address whose arithmetic overflowed"
+    );
+    assert_eq!(
+        overflow_error.to_string(),
+        format!("address arithmetic overflowed for 0x{XP_THRESHOLDS_VA:08X}"),
+        "EXETBL-002: and the message is the spec's, word for word"
+    );
+
+    // OutsideFile: a read that runs past the end of the section it names.
+    let outside_error = match image.read_va(LAST_DGROUP_VA, TWO_BYTES) {
+        Ok(_) => panic!("EXETBL-002: a read past the end of its section was admitted"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        outside_error,
+        ExeError::OutsideFile {
+            offset: DGROUP_LAST_FILE_OFFSET,
+            len: TWO_BYTES,
+        },
+        "EXETBL-002: the refusal carries the file offset the read would have \
+         started at and the length it asked for"
+    );
+    assert_eq!(
+        outside_error.to_string(),
+        format!(
+            "read of {TWO_BYTES} bytes at file offset 0x{DGROUP_LAST_FILE_OFFSET:X} \
+             runs past the end of its section or of the file"
+        ),
+        "EXETBL-002: and the message is the spec's, word for word"
+    );
+
+    // RecordCount: the shape says 38 records and 37 were read. The reader cannot
+    // reach this variant on the reference build, because it reads a whole table
+    // or refuses it, so the value is built here and its message is what is
+    // asserted.
+    let record_count = ExeError::RecordCount {
+        va: STAT_LIMITS_VA,
+        expected: STAT_LIMIT_COUNT,
+        observed: RECORD_COUNT_OBSERVED,
+    };
+    assert_eq!(
+        record_count.to_string(),
+        format!(
+            "table at 0x{STAT_LIMITS_VA:08X} declared {STAT_LIMIT_COUNT} records \
+             but {RECORD_COUNT_OBSERVED} were read"
+        ),
+        "EXETBL-002: the record count message names the table, the shape and the \
+         count, in the spec's words"
+    );
+
+    // BuildMismatch: a build whose digest is not the reference digest.
+    let mutated = foreign_build_bytes(&bytes);
+    let mismatch_error = match reference_image(&mutated) {
+        Ok(_) => panic!("EXETBL-001: a one bit flip of the reference build was admitted"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        mismatch_error,
+        ExeError::BuildMismatch {
+            expected_sha256: EXPECTED_SHA256_HEX,
+            observed_sha256: FOREIGN_BUILD_SHA256_HEX.to_owned(),
+        },
+        "EXETBL-001: the refusal carries the digest the crate requires and the \
+         digest the supplied bytes actually have"
+    );
+    assert_eq!(
+        mismatch_error.to_string(),
+        format!(
+            "executable digest {FOREIGN_BUILD_SHA256_HEX} is not the reference build \
+             {EXPECTED_SHA256_HEX}; this build's table constants are unknown and are \
+             not guessed"
+        ),
+        "EXETBL-001: and the message names both digests, in the spec's exact words"
     );
 }
 

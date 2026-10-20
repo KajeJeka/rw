@@ -252,9 +252,23 @@ cargo mutants \
     --test-workspace true \
     --profile release \
     --no-shuffle \
-    -j "${RW_MUTANTS_JOBS:-4}" \
+    -j "${RW_MUTANTS_JOBS:-1}" \
     --timeout 1200
 ```
+
+**`-j 1`, and the gate refuses anything above 1.** The job count is not a
+performance setting, it is what makes the survivor list a measurement.
+cargo-mutants copies the workspace into a temporary directory for each mutant,
+and every parallel worker shares the ONE target directory. cargo's fingerprint
+for a path dependency does not include the path, so a worker can be graded
+against a binary another worker built from a DIFFERENT mutation, and the list
+is wrong in both directions: a real gap looks like a survivor and a real kill
+looks like a survivor. Measured: with `-j 2` the five reader crates reported 27
+survivors, twelve of them changes to the endian readers that a hand
+re-measurement showed are killed by this gate; with `-j 1` the same crates
+report 2 for fo1-dat and 3 for the SHA-256 module, and every one of those is a
+genuinely equivalent change. `RW_MUTANTS_JOBS` overrides the count, and an
+override above 1 is REFUSED rather than honoured.
 
 **The package list is read from `tools/layers.txt`**, not hard-coded. Every
 workspace member that is not in the dev-only band is mutated. The dev-only

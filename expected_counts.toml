@@ -4,27 +4,33 @@
 # A LOWER number than this file fails the gate. These values may only rise, and
 # only with the owner's approval (guide: The gate script).
 #
-# Phase 1 counts, measured after wave 2. Every gate test carries a claim id and
-# an oracle class, so the per-file floors below are the real numbers, not
-# estimates.
+# Phase 1 counts, measured after the M0 and M1a closure pass. Every gate test
+# carries a claim id and an oracle class, so the per-file floors below are the
+# real numbers, not estimates.
 
 # Synthetic gate tests. These run in CI and never touch game data.
-synthetic_endian 16
+synthetic_endian 22
 synthetic_lzss 18
-synthetic_dat 16
+synthetic_dat 23
+synthetic_exe 31
 
 # Install gate tests. These are #[ignore = "needs FO1_DATA"] and run only with
 # --ignored on a machine where FO1_DATA points at the reference install.
-install_archive 12
+# install_exe_tables holds 23 tests and 22 of them are #[ignore]d; the one that
+# is not, the digest-first refusal of two short buffers, needs no install at
+# all and runs in the default test run. All 23 of them are counted under
+# min_install_tests below, and the per-file floor of 23 counts every test the
+# file holds.
+install_archive 14
 install_plaintext 6
-install_exe_tables 22
+install_exe_tables 23
 
 # Totals the gate asserts across the six files.
-min_synthetic_tests 50
-min_install_tests 40
+min_synthetic_tests 94
+min_install_tests 43
 
 # Tests that live in crates/fo1-tests and run in CI: the harness fingerprint,
 # the SHA-256 vectors, and the canaries that reject write index 0 and 4095 and a
 # 0x00 prefill. These are the reference decoders, not the code under test, so
 # they are counted separately from the gate surface.
-min_harness_tests 13
+min_harness_tests 17

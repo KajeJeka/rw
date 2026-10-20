@@ -21,7 +21,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex, MutexGuard};
 
 use crate::sha256::{hex, sha256_of_file};
 
@@ -244,9 +243,10 @@ impl Install {
         let critter_path = root.join(CRITTER_DAT_FILE_NAME);
 
         // The executable is the file whose digest identifies the build, so it
-        // is the one that is hashed. The digest is taken once per process and
-        // reused: the gate builds an `Install` per test, and hashing 1.2 MB
-        // twenty two times is wasted work.
+        // is the one that is hashed. The digest is read from the file on every
+        // call and is never remembered: a digest carried over from an earlier
+        // call goes stale the moment the file's content changes without its
+        // size changing, and the gate would then admit a file it never read.
         let exe = fingerprint(&exe_path, EXE_FILE_NAME)?;
         let exe = check_sha256(exe, REFERENCE_EXE_SHA256)?;
 
@@ -384,87 +384,10 @@ pub fn install_root_from_env() -> Result<PathBuf, HarnessError> {
     }
 }
 
-/// One cached digest, with the facts about the file that were true when the
-/// digest was computed.
-#[derive(Debug, Clone)]
-struct CachedDigest {
-    /// Size of the file when it was hashed.
-    bytes: u64,
-    /// Lowercase hex SHA-256 of the whole file.
-    digest: String,
-}
-
-/// Digests already computed in this process, as a list of (path, digest).
-///
-/// The gate builds one `Install` per test, and every one of them would
-/// otherwise hash the same executable. A file that does not change does not
-/// change its digest either, so one hash per process is enough.
-///
-/// The list is a `Vec` and not a `HashMap`: the order a hash map iterates in
-/// is not defined, and this crate's sources are held to determinism
-/// (guide: Engineering philosophy, "Determinism"). There is one entry per
-/// install file, so a linear scan is the right cost.
-///
-/// A cached entry is only reused while the file's **size** is unchanged. Size
-/// is the one file fact that needs no clock: reading a modification time would
-/// make the harness depend on the wall clock, which the determinism rule
-/// forbids. A file rewritten in place with the same length is the one case a
-/// size check cannot see, and nothing writes to the reference install while
-/// the gate runs.
-static DIGEST_CACHE: LazyLock<Mutex<Vec<(PathBuf, CachedDigest)>>> =
-    LazyLock::new(|| Mutex::new(Vec::new()));
-
-/// The digest cache's lock guard.
-///
-/// # Errors
-///
-/// [`HarnessError::InternalInvariant`] when the lock was poisoned, which
-/// means another thread panicked while holding it. The poison is reported
-/// rather than swallowed: a cache that cannot be locked has not been shown to
-/// hold a correct digest.
-fn digest_cache_guard() -> Result<MutexGuard<'static, Vec<(PathBuf, CachedDigest)>>, HarnessError> {
-    DIGEST_CACHE
-        .lock()
-        .map_err(|_| HarnessError::InternalInvariant {
-            detail: "the digest cache lock was poisoned by a panic in another thread",
-        })
-}
-
-/// The digest of the file at `path`, hashed at most once per process.
-///
-/// # Errors
-///
-/// [`HarnessError::ReadFailed`] when the file cannot be read,
-/// [`HarnessError::ArithmeticOverflow`] for a length that cannot be counted,
-/// and [`HarnessError::InternalInvariant`] when the digest cache is poisoned.
-fn cached_digest(path: &Path, bytes: u64) -> Result<String, HarnessError> {
-    {
-        let guard = digest_cache_guard()?;
-        if let Some((_, cached)) = guard.iter().find(|(cached_path, _)| cached_path == path) {
-            if cached.bytes == bytes {
-                return Ok(cached.digest.clone());
-            }
-        }
-    }
-    // The hash happens outside the lock: it reads the whole file, and the
-    // lock is only there to keep the cache consistent.
-    let digest = sha256_of_file(path)?;
-    let mut guard = digest_cache_guard()?;
-    guard.retain(|(cached_path, _)| cached_path != path);
-    guard.push((
-        path.to_path_buf(),
-        CachedDigest {
-            bytes,
-            digest: digest.clone(),
-        },
-    ));
-    Ok(digest)
-}
-
 /// Fingerprints a file by hashing it and by measuring it.
 fn fingerprint(path: &Path, role: &'static str) -> Result<Fingerprint, HarnessError> {
     let bytes = file_size(path, role)?;
-    let sha256 = cached_digest(path, bytes)?;
+    let sha256 = sha256_of_file(path)?;
     Ok(Fingerprint {
         role,
         path: path.to_path_buf(),
@@ -591,7 +514,7 @@ mod tests {
             std::env::temp_dir().join(format!("rw-harness-build-gate-{}.bin", std::process::id()));
         fs::write(&path, foreign).expect("the fixture is written");
 
-        let observed = cached_digest(&path, foreign.len() as u64).expect("the fixture digests");
+        let observed = sha256_of_file(&path).expect("the fixture digests");
         let fp = Fingerprint {
             role: EXE_FILE_NAME,
             path: path.clone(),
@@ -655,44 +578,71 @@ mod tests {
         let _ = fs::remove_file(&path);
     }
 
-    /// The digest cache returns the digest it computed, and rehashes a file
-    /// whose size moved.
+    /// The executable digest is read from the file every time, so a file whose
+    /// content changed without changing its size cannot keep its old digest.
     ///
-    /// The cache is what makes the gate affordable, and a cache that answered
-    /// with a stale digest would let a changed executable through the gate.
-    /// A file whose size changed is rehashed, so the cache cannot launder a
-    /// different file of the same name.
+    /// The harness used to remember the digest of the executable per process
+    /// and reuse it while the file's size was unchanged. That made the gate
+    /// blind to the one change a size check cannot see: a file rewritten in
+    /// place with the same length. The stale digest still matched the
+    /// reference digest, so the gate admitted a file it had never read. The
+    /// digest is therefore taken from the file on every call.
+    ///
+    /// The fingerprint goes through the same path the gate uses, so the test
+    /// fails against a harness that remembers digests instead of reading them.
     #[test]
-    fn the_digest_cache_rehashes_a_file_whose_size_changed() {
+    fn the_executable_digest_is_read_from_the_file_every_time() {
         let path = std::env::temp_dir().join(format!(
-            "rw-harness-digest-cache-{}.bin",
+            "rw-harness-fresh-digest-{}.bin",
             std::process::id()
         ));
-        let first = b"the first contents of the fixture";
-        fs::write(&path, first).expect("the fixture is written");
-
-        let first_digest = cached_digest(&path, first.len() as u64).expect("the fixture digests");
+        // The two contents differ, and their lengths do not. That is the case
+        // a size keyed cache cannot see.
+        let first = b"the first contents of the file";
+        let second = b"the other contents of the file";
         assert_eq!(
-            first_digest,
-            digest_of(first),
-            "the cached digest is the digest of the file"
+            first.len(),
+            second.len(),
+            "the fixture must change its content without changing its size"
         );
 
-        // The same path, a different file. The size differs, so the entry must
-        // not be reused.
-        let second = b"the second, longer contents of the fixture";
-        fs::write(&path, second).expect("the fixture is rewritten");
-        let second_digest =
-            cached_digest(&path, second.len() as u64).expect("the rewritten fixture digests");
+        fs::write(&path, first).expect("the fixture is written");
+        let first_expected = digest_of(first);
+        let first_fp = fingerprint(&path, EXE_FILE_NAME).expect("the fixture fingerprints");
         assert_eq!(
-            second_digest,
-            digest_of(second),
-            "a file whose size changed is rehashed, not answered from the cache"
+            first_fp.sha256.as_deref(),
+            Some(first_expected.as_str()),
+            "the fingerprint carries the digest of the bytes on disk"
+        );
+
+        fs::write(&path, second).expect("the fixture is rewritten");
+        let second_expected = digest_of(second);
+        let second_fp =
+            fingerprint(&path, EXE_FILE_NAME).expect("the rewritten fixture fingerprints");
+        assert_eq!(
+            second_fp.sha256.as_deref(),
+            Some(second_expected.as_str()),
+            "the fingerprint is taken again, so it carries the digest of the bytes now on disk"
         );
         assert_ne!(
-            first_digest, second_digest,
-            "the two contents must not hash to the same digest"
+            first_fp.sha256, second_fp.sha256,
+            "a file whose content changed must not keep the digest it had before"
         );
+
+        // And the gate built from the changed file must refuse it, rather than
+        // admit it on the strength of the digest taken before the change.
+        let error = check_sha256(second_fp, REFERENCE_EXE_SHA256)
+            .expect_err("a changed file must be refused");
+        match error {
+            HarnessError::UnsupportedInstall { what, actual, .. } => {
+                assert_eq!(what, "falloutw.exe sha256", "the refusal names the digest");
+                assert_eq!(
+                    actual, second_expected,
+                    "the refusal reports the digest of the changed file, not the earlier one"
+                );
+            }
+            other => panic!("expected an UnsupportedInstall, got {other:?}"),
+        }
 
         let _ = fs::remove_file(&path);
     }
