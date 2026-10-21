@@ -6,12 +6,13 @@ The first complete version will be called **0.9 ALL MUTANTS ALLOWED**. Its Cargo
 
 ## Status
 
-Milestones 0 and 1 are implemented. The engine reads the DAT archives, decompresses their entries and reads the seven data tables stored in the original executable. It cannot start the game yet. Milestones 2 to 8 are open. Version 0.9 is released when milestone 8 passes its gate.
+Milestone 0 and milestone 1a are implemented. The engine reads the DAT archives, decompresses their entries, reads the byte order of both layers and reads the seven data tables stored in the original executable. It cannot start the game yet. Milestone 1b, milestones 2 to 8 are open. Version 0.9 is released when milestone 8 passes its gate.
 
 | Milestone | Content | State |
 |---|---|---|
 | M0 | DAT archives and LZSS | Implemented |
-| M1 | Byte readers, executable tables, assets | Implemented |
+| M1a | Byte readers, DAT container, executable tables | Implemented |
+| M1b | `fo1-path`, `fo1-assets`, prototype and map parsing | Open |
 | M2 | World and renderer | Open |
 | M3 | Combat | Open |
 | M4 | Scripts | Open |
@@ -47,16 +48,17 @@ The engine reads your files and never writes to them. Save files go to the direc
 
 ## Run the tests
 
-Three suites need no game files and finish in seconds.
+Four suites need no game files and finish in seconds.
 
 ```
 cargo test --test synthetic_endian
 cargo test --test synthetic_lzss
 cargo test --test synthetic_dat
+cargo test --test synthetic_exe
 cargo test -p fo1-tests
 ```
 
-Three suites check the code against your real game files. They are slow and need `--ignored`.
+Three suites check the code against your real game files. They need `--ignored`.
 
 ```
 export FO1_DATA=/path/to/your/fallout
@@ -65,13 +67,13 @@ cargo test --test install_plaintext -- --ignored --test-threads=1
 cargo test --test install_exe_tables -- --ignored --test-threads=1
 ```
 
-All six take about 25 minutes. Keep `--test-threads=1`. The archive tests hold hundreds of megabytes each.
+The install suites take about half a minute. Keep `--test-threads=1`. The archive tests hold hundreds of megabytes each.
 
 To run every check that a change must pass, use `tools/gate.sh`. It writes a report to `target/gate/report.md`.
 
 ## How the code is organized
 
-The workspace has 18 crates in layers. A crate may depend only on crates in a lower layer. `tools/layers.txt` holds the rule and `tools/check_layers.sh` enforces it.
+The workspace has seven crates today, in layers. The table below is the target layout, with the crates that do not exist yet marked. A crate may depend only on crates in a lower layer. `tools/layers.txt` holds the rule and `tools/check_layers.sh` enforces it.
 
 | Layer | Crates |
 |---|---|

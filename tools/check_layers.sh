@@ -11,9 +11,11 @@
 #   3. no runtime crate (any band except the dev-only test harness band) depends
 #      on the test harness.
 #
-# Band 9 is the dev-only band. Two band 9 crates may depend on each other through
-# dev-dependencies, because a dev-dependency is not shipped and never appears in
-# the runtime graph. Rule 2 applies to every non-dev edge without exception.
+# Band 9 is the dev-only band in the current layer file. The number is read
+# from tools/layers.txt, which assigns the bands, so this script and
+# tools/gate.sh cannot drift apart on it. The two read the same file two
+# different ways, and tools/gate.sh compares the numbers and fails the gate
+# when they disagree.
 #
 # The JSON is parsed with python or python3, whichever is found, and no JSON
 # dependency is added to the workspace: this script runs outside cargo, and a
@@ -27,8 +29,16 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 cd "$REPO_ROOT"
 
+# The dev-only band. Band 9 holds the reference decoders and the gate test
+# host: those are the proof, not the code being proved, and no runtime crate
+# may depend on them.
+#
+# The number is not written here. tools/layers.txt assigns the bands, and a
+# script that carries its own copy of the number drifts from the file, and the
+# drift is silent. The band is read from the layer file as the band of the
+# harness crate, which is the crate the rule is about.
+
 LAYERS_FILE="tools/layers.txt"
-HARNESS_BAND=9
 HARNESS_CRATE="fo1-tests"
 
 if [ ! -f "$LAYERS_FILE" ]; then
@@ -99,14 +109,25 @@ if [ ! -s "$LAYERS" ]; then
     exit 1
 fi
 
+# The dev-only band, from the layer file. The harness crate must be in it:
+# the rule below is about the band the harness is in, so a layer file that
+# does not band the harness has no dev band to speak of.
+DEV_BAND=$(awk -v crate="$HARNESS_CRATE" '$2 == crate { print $1 }' "$LAYERS" | head -1)
+if [ -z "$DEV_BAND" ]; then
+    printf 'check_layers.sh: %s does not band the harness crate %s, so the dev-only band is unknown\n' \
+        "$LAYERS_FILE" "$HARNESS_CRATE" >&2
+    exit 1
+fi
+printf 'check_layers.sh: dev band %s\n' "$DEV_BAND"
+
 # --- the check ---------------------------------------------------------------
 
-"$PYTHON" - "$METADATA" "$LAYERS" "$REPORT" <<'PYEOF' || exit 1
+"$PYTHON" - "$METADATA" "$LAYERS" "$REPORT" "$DEV_BAND" <<'PYEOF' || exit 1
 import json
 import sys
 
-metadata_path, layers_path, report_path = sys.argv[1], sys.argv[2], sys.argv[3]
-HARNESS_BAND = 9
+metadata_path, layers_path, report_path, dev_band_text = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+HARNESS_BAND = int(dev_band_text)
 
 meta = json.load(open(metadata_path, encoding="utf-8"))
 

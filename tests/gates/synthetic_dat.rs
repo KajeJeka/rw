@@ -9,12 +9,22 @@
 //!   absolute byte position of a name, a block header and an entry record is an
 //!   assertion rather than an accident (class 5);
 //! - a **second, independent walk** of the same bytes by `fo1_tests`, the
-//!   reference tree walker (class 4); and
+//!   reference tree walker, and the reference LZSS decoder beside it (class 4);
 //! - an **algebraic law** about counts, offsets or modes (class 6).
 //!
 //! The oracle classes used below follow `docs/spec/trace.md`: oracle class 4 (an
 //! independent reference implementation), oracle class 5 (hand computed vectors
 //! from the spec) and oracle class 6 (algebraic laws).
+//!
+//! The class 4 oracle is real: the tests below import `fo1_tests::RefDatTree`
+//! and `fo1_tests::RefLzss` and cross-walk or cross-decode the same bytes with
+//! them, and the two answers are compared. A test that does not do that claims
+//! class 5 or class 6 only, and says so in its own doc comment.
+//!
+//! Every constant a test compares against is read out of the constants ledger
+//! at run time, so a change in `docs/spec/dat.constants.toml` or in
+//! `docs/spec/lzss.constants.toml` fails a test here instead of leaving a stale
+//! literal behind in a file that reads like evidence.
 //!
 //! One convention runs through the file: a layout offset in a fixture is a
 //! `usize`, because it indexes a buffer, and an entry record stores it as a
@@ -49,6 +59,56 @@ use fo1_dat::{
     decode_entry, decode_entry_with_stats, payload_mode, DatArchive, DatError, EntryRecord,
     PayloadMode, ROOT_HEADER_SIZE,
 };
+use fo1_tests::{RefDatTree, RefEntry, RefLzss};
+
+// --- the constants ledgers -----------------------------------------------------
+
+/// The DAT constants ledger, embedded at compile time.
+///
+/// A constant that lives in a document is only evidence if a test reads it there.
+/// The ledger is the source of truth for `docs/spec/dat.md`, so the values below
+/// are compared against what this file holds.
+const DAT_CONSTANTS_LEDGER: &str = include_str!("../../docs/spec/dat.constants.toml");
+
+/// The LZSS constants ledger, embedded at compile time for the same reason.
+const LZSS_CONSTANTS_LEDGER: &str = include_str!("../../docs/spec/lzss.constants.toml");
+
+/// The `value` of one constant in a ledger, by its `id`.
+///
+/// A ledger is a list of `[[constant]]` blocks, each with an `id` line and a
+/// `value` line. A missing id, a missing value or a value this reader cannot
+/// parse is a panic and not a default: the ledger is the source of truth, and a
+/// constant that has gone missing must fail loudly rather than quietly become
+/// zero.
+fn ledger_value(ledger: &str, id: &str) -> usize {
+    let wanted = format!("id = \"{id}\"");
+    let start = match ledger.lines().position(|line| line.trim() == wanted) {
+        Some(at) => at + 1,
+        None => panic!("the ledger has no constant {id}"),
+    };
+    let line = match ledger
+        .lines()
+        .skip(start)
+        .find(|line| line.trim().starts_with("value = "))
+    {
+        Some(line) => line,
+        None => panic!("the ledger constant {id} has no value"),
+    };
+    let raw = match line.trim().strip_prefix("value = ") {
+        Some(raw) => raw.trim(),
+        None => panic!("the ledger constant {id} has no value"),
+    };
+    // The ledger writes numbers in decimal, and its own header says the hex
+    // form is the same number, so both are read.
+    let parsed = match raw.strip_prefix("0x") {
+        Some(hex) => usize::from_str_radix(hex, 16),
+        None => raw.parse::<usize>(),
+    };
+    match parsed {
+        Ok(value) => value,
+        Err(_) => panic!("the ledger constant {id} has a value this reader cannot read"),
+    }
+}
 
 // --- container constants ------------------------------------------------------
 
@@ -122,6 +182,10 @@ const ROOT_SIZE_FIELD: u32 = 0;
 /// The diagnostic label every fixture is parsed under (DAT-030).
 const SYNTHETIC_ORIGIN: &str = "synthetic_dat";
 
+/// A second diagnostic label, for the test that proves the archive reports the
+/// label it was parsed under rather than a fixed string (DAT-030).
+const SYNTHETIC_ALT_ORIGIN: &str = "synthetic_dat_alt";
+
 // --- payload shapes used by the chain and stream fixtures ---------------------
 
 /// Raw block frame carrying the two bytes `AB`. Bit 15 is set and the length
@@ -167,6 +231,94 @@ const CHAIN_LZSS_BLOCKS: u32 = 1;
 /// Raw blocks in that chain (DAT-020).
 const CHAIN_RAW_BLOCKS: u32 = 1;
 
+/// LZSS block payload whose back reference is missing its second byte: a
+/// control byte of zero, which asks for a back reference, and the first byte of
+/// that pair, and nothing else (LZSS-007, LZSS-015).
+const LZSS_CUT_PAIR_PAYLOAD: [u8; 2] = [0x00, 0x00];
+
+/// LZSS block payload that fills the declaration exactly and then runs out in
+/// the middle of a second back reference: the spec's worked vector `00 00 0F`
+/// (LZSS-018), followed by the first byte of a second pair and by nothing else.
+///
+/// The control byte is zero, so all eight of its tokens are back references
+/// (LZSS-007): the first pair is the worked vector and writes eighteen bytes,
+/// and the second pair starts one byte before the input ends.
+const LZSS_FULL_THEN_CUT_PAIR_PAYLOAD: [u8; 4] = [0x00, 0x00, 0x0F, 0x00];
+
+// --- the two LZSS block chain (DAT-019) ---------------------------------------
+
+/// Control byte `0x01` of block A: bit 0 is a literal and the seven bits above
+/// it are a back reference with no input behind it, so the block ends after
+/// one literal (`lzss.md` LZSS-005, LZSS-006, LZSS-013).
+const TWO_BLOCK_A_CONTROL: u8 = 0x01;
+
+/// The one byte block A writes. It is neither the prefill `0x20` nor zero, so a
+/// byte that crossed a block boundary would be visible in the output.
+const TWO_BLOCK_A_LITERAL: u8 = 0x41;
+
+/// Payload of block A: a control byte and one literal.
+const TWO_BLOCK_A_PAYLOAD: [u8; 2] = [TWO_BLOCK_A_CONTROL, TWO_BLOCK_A_LITERAL];
+
+/// Frame header of block A: bit 15 clear, so an LZSS block, and two payload
+/// bytes (DAT-018).
+const TWO_BLOCK_A_HEADER: u16 = 2;
+
+/// Bytes block A occupies on disk: its frame header and its payload.
+const TWO_BLOCK_A_FRAME_BYTES: usize = 2 + TWO_BLOCK_A_PAYLOAD.len();
+
+/// The back reference of block B, `b1` then `b2` (`lzss.md` LZSS-007).
+///
+/// `source = b1 | ((b2 & 0xF0) << 4)` must be 4078, the slot a fresh ring's
+/// write head starts at (LZSS-003). 4078 is 0xFEE, so `b1` is 0xEE and the top
+/// nibble of `b2` is 0xF. `length = (b2 & 0x0F) + 3` must be 18, the longest
+/// run the format allows (LZSS-008), so the bottom nibble is 0xF.
+const TWO_BLOCK_B_TOKEN: [u8; 2] = [0xEE, 0xFF];
+
+/// Payload of block B: a control byte of zero, so every one of its eight bits
+/// is a back reference, and the token.
+const TWO_BLOCK_B_PAYLOAD: [u8; 3] = [0x00, TWO_BLOCK_B_TOKEN[0], TWO_BLOCK_B_TOKEN[1]];
+
+/// Frame header of block B: bit 15 clear, so an LZSS block, and three payload
+/// bytes (DAT-018).
+const TWO_BLOCK_B_HEADER: u16 = 3;
+
+/// Bytes block B occupies on disk: its frame header and its payload.
+const TWO_BLOCK_B_FRAME_BYTES: usize = 2 + TWO_BLOCK_B_PAYLOAD.len();
+
+/// Bytes the two block chain occupies on disk.
+const TWO_BLOCK_COMPRESSED_SIZE: usize = TWO_BLOCK_A_FRAME_BYTES + TWO_BLOCK_B_FRAME_BYTES;
+
+/// Ring slot block B's token reads: 4078, the write head of a fresh ring
+/// (LZSS-003). A fresh ring holds zero there (LZSS-002) and block A has just
+/// written its literal into it.
+const TWO_BLOCK_B_SLOT: usize = 4078;
+
+/// The eighteen bytes block B produces on a fresh ring.
+///
+/// A fresh ring holds zero in slots 4078..=4095, so a run of eighteen that
+/// starts at slot 4078 reads eighteen zero bytes and writes eighteen zero
+/// bytes. The run trails the write head by one slot, so on a ring carried over
+/// from block A it would instead replicate block A's literal eighteen times
+/// (LZSS-011). The two answers differ in every byte, which is what makes this
+/// fixture able to see a ring that crossed a block boundary.
+const TWO_BLOCK_B_OUTPUT: [u8; 18] = [0x00; 18];
+
+/// The one byte block A produces.
+const TWO_BLOCK_A_OUTPUT: [u8; 1] = [TWO_BLOCK_A_LITERAL];
+
+/// Bytes the two block chain decodes to: block A's one byte and block B's
+/// eighteen.
+const TWO_BLOCK_UNCOMPRESSED_SIZE: usize = TWO_BLOCK_A_OUTPUT.len() + TWO_BLOCK_B_OUTPUT.len();
+
+/// Blocks in the two block chain (DAT-018).
+const TWO_BLOCK_BLOCKS: u32 = 2;
+
+/// LZSS blocks in the two block chain (DAT-020).
+const TWO_BLOCK_LZSS_BLOCKS: u32 = 2;
+
+/// Raw blocks in the two block chain (DAT-020).
+const TWO_BLOCK_RAW_BLOCKS: u32 = 0;
+
 /// Stored payload of the `0x20` fixtures, thirty two bytes, so the length is a
 /// named constant rather than an expression inside an assertion.
 const STORED_PAYLOAD: [u8; 32] = *b"SYNTHETIC-STORED-PAYLOAD-0000001";
@@ -209,6 +361,60 @@ const PAYLOAD_MODE_CASES: [(u32, &str); 7] = [
 
 /// Number of rows in [`PAYLOAD_MODE_CASES`].
 const PAYLOAD_MODE_CASE_COUNT: usize = 7;
+
+// --- oracle 5: the error type's rendered message -------------------------------
+
+/// The nine variants of `DatError`, the quantity each one must report, and the
+/// name the variant is graded under.
+///
+/// `docs/spec/dat.md` DAT-030 fixes the variant set and what each variant
+/// means. It does not fix the wording of a single message: compare
+/// `docs/spec/exe-tables.md`, which prints the whole `Display` impl for
+/// `ExeError` inside the spec, so the EXE gate can assert exact text and this
+/// one cannot. So the assertion below is the CONTENT: the message is not
+/// empty, it names the offending quantity, and no two variants render the same
+/// message, because two variants that rendered the same text would not be
+/// naming what went wrong.
+///
+/// The quantities are hand chosen and pairwise distinct, so a message that
+/// names the wrong number fails instead of passing on a coincidence. The
+/// variant with no quantity of its own is the one that reports an arithmetic
+/// failure rather than a place.
+const DAT_ERROR_CASES: [(&str, DatError, &[u64]); 9] = [
+    ("Truncated", DatError::Truncated { at: 41 }, &[41]),
+    (
+        "LengthOutOfRange",
+        DatError::LengthOutOfRange { at: 42 },
+        &[42],
+    ),
+    ("OutOfBounds", DatError::OutOfBounds { at: 43 }, &[43]),
+    ("OffsetOverflow", DatError::OffsetOverflow, &[]),
+    (
+        "UnknownPayloadMode",
+        DatError::UnknownPayloadMode { flags: 0x5A },
+        &[0x5A],
+    ),
+    (
+        "OutputOverrun",
+        DatError::OutputOverrun { declared: 44 },
+        &[44],
+    ),
+    ("OutputShort", DatError::OutputShort { declared: 45 }, &[45]),
+    (
+        "ConsumptionMismatch",
+        DatError::ConsumptionMismatch {
+            declared: 46,
+            actual: 47,
+        },
+        &[46, 47],
+    ),
+    ("EmptyBlock", DatError::EmptyBlock { at: 48 }, &[48]),
+];
+
+/// Number of rows in [`DAT_ERROR_CASES`], which is the number of variants the
+/// error type has.
+const DAT_ERROR_CASE_COUNT: usize = 9;
+
 // --- hand computed layout offsets, oracle class 5 -----------------------------
 
 /// Width of one stored name in the name section: the length byte plus the name.
@@ -227,10 +433,10 @@ const fn record_width(name: &str) -> usize {
 /// Record widths, one per fixture name, so no layout constant needs a hand
 /// counted character total.
 const WIDTH_COLOR_PAL: usize = record_width("COLOR.PAL");
-const WIDTH_FONT0_AAF: usize = record_width("FONT0.AAF");
-const WIDTH_FONT5_FON: usize = record_width("FONT5.FON");
+const WIDTH_SYNTH_PAL: usize = record_width("SYNTH.PAL");
+const WIDTH_SYNTH_FON: usize = record_width("SYNTH.FON");
 const WIDTH_CRITTERS_LST: usize = record_width("CRITTERS.LST");
-const WIDTH_BIG_FRM: usize = record_width("BIG.FRM");
+const WIDTH_SYNTH_FRM: usize = record_width("SYNTH.FRM");
 const WIDTH_A1_FRM: usize = record_width("A1.FRM");
 const WIDTH_GRID000_FRM: usize = record_width("GRID000.FRM");
 const WIDTH_A: usize = record_width("A");
@@ -239,6 +445,7 @@ const WIDTH_STORED_BIN: usize = record_width("STORED.BIN");
 const WIDTH_STORED2_BN: usize = record_width("STORED2.BN");
 const WIDTH_RAW1_BIN: usize = record_width("RAW1.BIN");
 const WIDTH_LZSS1_BIN: usize = record_width("LZSS1.BIN");
+const WIDTH_TWO_BIN: usize = record_width("TWO.BIN");
 const WIDTH_CHAIN_BIN: usize = record_width("CHAIN.BIN");
 const WIDTH_L1_BIN: usize = record_width("L1.BIN");
 const WIDTH_SHORT_BIN: usize = record_width("SHORT.BIN");
@@ -263,13 +470,14 @@ const ROUND_TRIP_BLOCK0_ENTRIES: usize = ROUND_TRIP_BLOCK0_HEADER + HEADER_WIDTH
 /// `synthetic_round_trip`: byte offset of block 1's header, after block 0's
 /// three twenty six byte records.
 const ROUND_TRIP_BLOCK1_HEADER: usize =
-    ROUND_TRIP_BLOCK0_ENTRIES + WIDTH_COLOR_PAL + WIDTH_FONT0_AAF + WIDTH_FONT5_FON;
+    ROUND_TRIP_BLOCK0_ENTRIES + WIDTH_COLOR_PAL + WIDTH_SYNTH_PAL + WIDTH_SYNTH_FON;
 
 /// `synthetic_round_trip`: byte offset of block 1's first entry.
 const ROUND_TRIP_BLOCK1_ENTRIES: usize = ROUND_TRIP_BLOCK1_HEADER + HEADER_WIDTH;
 
 /// `synthetic_round_trip`: total length of the tree.
-const ROUND_TRIP_TREE_BYTES: usize = ROUND_TRIP_BLOCK1_ENTRIES + WIDTH_CRITTERS_LST + WIDTH_BIG_FRM;
+const ROUND_TRIP_TREE_BYTES: usize =
+    ROUND_TRIP_BLOCK1_ENTRIES + WIDTH_CRITTERS_LST + WIDTH_SYNTH_FRM;
 
 /// Directories in `synthetic_round_trip`.
 const ROUND_TRIP_DIRECTORIES: usize = 2;
@@ -363,6 +571,16 @@ const CHAIN_SECOND_PAYLOAD_OFFSET: usize = CHAIN_TREE_BYTES + CHAIN_COMPRESSED_S
 /// Entries in `synthetic_chain`.
 const CHAIN_ENTRY_COUNT: usize = 2;
 
+/// `synthetic_two_block_chain`: byte offset of block 0's header.
+const TWO_BLOCK_BLOCK_HEADER: usize = HEADER_WIDTH + NAME_WIDTH_DOT;
+
+/// `synthetic_two_block_chain`: total tree length, after one twenty four byte
+/// record.
+const TWO_BLOCK_TREE_BYTES: usize = TWO_BLOCK_BLOCK_HEADER + HEADER_WIDTH + WIDTH_TWO_BIN;
+
+/// Entries in `synthetic_two_block_chain`.
+const TWO_BLOCK_ENTRY_COUNT: usize = 1;
+
 /// `synthetic_chain_consumption`: byte offset of block 0's header.
 const CONSUMPTION_BLOCK_HEADER: usize = HEADER_WIDTH + NAME_WIDTH_DOT;
 
@@ -386,6 +604,32 @@ const CONSUMPTION_HEADER_SUM: usize = 9;
 
 /// Entries in `synthetic_chain_consumption`.
 const CONSUMPTION_ENTRY_COUNT: usize = 1;
+
+/// Bytes the chain's decoded form runs past the end of the archive: it decodes
+/// to twenty bytes and stores nine (DAT-021).
+const CONSUMPTION_DECODED_OVERRUN: usize = CHAIN_UNCOMPRESSED_SIZE - CHAIN_COMPRESSED_SIZE;
+
+/// `synthetic_single_lzss_chain`: byte offset of block 0's header.
+const SINGLE_BLOCK_CHAIN_HEADER: usize = HEADER_WIDTH + NAME_WIDTH_DOT;
+
+/// `synthetic_single_lzss_chain`: total tree length, after one twenty six byte
+/// record.
+const SINGLE_BLOCK_CHAIN_TREE_BYTES: usize =
+    SINGLE_BLOCK_CHAIN_HEADER + HEADER_WIDTH + WIDTH_CHAIN_BIN;
+
+/// Entries in `synthetic_single_lzss_chain`.
+const SINGLE_BLOCK_CHAIN_ENTRY_COUNT: usize = 1;
+
+/// Bytes the chain of one complete LZSS block occupies on disk: the two byte
+/// frame header and its three payload bytes (DAT-018).
+const SINGLE_BLOCK_CHAIN_COMPLETE_COMPRESSED: usize = 2 + LZSS_BLOCK_PAYLOAD.len();
+
+/// Bytes the chain of one cut LZSS block occupies on disk.
+const SINGLE_BLOCK_CHAIN_CUT_COMPRESSED: usize = 2 + LZSS_CUT_PAIR_PAYLOAD.len();
+
+/// Bytes the chain of one full-then-cut LZSS block occupies on disk.
+const SINGLE_BLOCK_CHAIN_FULL_THEN_CUT_COMPRESSED: usize =
+    2 + LZSS_FULL_THEN_CUT_PAIR_PAYLOAD.len();
 
 /// `synthetic_declared_too_large`: byte offset of block 0's header.
 const TOO_LARGE_BLOCK_HEADER: usize = HEADER_WIDTH + NAME_WIDTH_DOT;
@@ -497,6 +741,25 @@ const LOOKUP_DIRECTORY_NAME_LENGTH: usize = HEADER_WIDTH;
 
 /// Byte offset of the root header's field 0.
 const ROOT_FIELD0: usize = 0;
+
+/// Bytes of the root header that hold field 0, the directory count. The other
+/// three fields are read and discarded (DAT-002), so a bit flip in them must
+/// change nothing at all.
+const ROOT_FIELD_0_WIDTH: usize = 4;
+
+/// Byte offset of the root header's field 2, the third u32. Two fields of four
+/// bytes each come before it (DAT-001).
+const ROOT_FIELD_2_OFFSET: usize = 2 * ROOT_FIELD_0_WIDTH;
+
+/// Length of the truncated fixture: the root header's third u32 starts at byte
+/// 8 and needs four bytes, so ten bytes leaves two of them.
+const TRUNCATED_TREE_BYTES: usize = ROOT_FIELD_2_OFFSET + 2;
+
+/// The byte position the reader runs out at, in the width `DatError` reports a
+/// position in. The root header's third u32 starts at byte 8 (DAT-001) and the
+/// ten byte fixture stops two bytes into it, so the read that fails is the four
+/// byte read that starts at byte 8 (DAT-030).
+const TRUNCATED_AT: u64 = 8;
 
 /// Root header field 0 that no fixture can satisfy: more directories than the
 /// archive has bytes for.
@@ -796,6 +1059,21 @@ fn is_consumption_error(error: &DatError) -> bool {
     )
 }
 
+/// True when `text` reports `value` as a number of its own: one token equal to
+/// the decimal spelling, or one token equal to the hexadecimal spelling with or
+/// without its `0x` prefix.
+///
+/// The spec fixes WHICH quantity an error names, not how the number is spelled,
+/// so both spellings are accepted. The token has to equal the whole number, so
+/// a different number that merely contains these digits does not pass.
+fn reports_number(text: &str, value: u64) -> bool {
+    let decimal = value.to_string();
+    let hexadecimal = format!("{value:X}");
+    let prefixed = format!("{value:#X}");
+    text.split(|character: char| !character.is_ascii_alphanumeric())
+        .any(|token| token == decimal || token == hexadecimal || token == prefixed)
+}
+
 /// The eighteen spaces the `00 00 0F` LZSS block decodes to.
 fn lzss_block_output() -> Vec<u8> {
     vec![0x20; LZSS_BLOCK_OUTPUT]
@@ -851,20 +1129,50 @@ fn synthetic_chain_consumption(compressed_size: usize, extra_trailing: usize) ->
     archive
 }
 
+/// One archive holding one chain entry whose single LZSS block carries
+/// `payload`, and whose entry declares `declared` output bytes.
+///
+/// The chain is one framed block and nothing else (DAT-018), so the payload the
+/// caller hands over is the block's payload and nothing else: the frame header
+/// is written here, and the compressed size the entry declares is the header
+/// plus that payload.
+fn synthetic_single_lzss_chain(payload: &[u8], declared: usize) -> Vec<u8> {
+    let mut chain = Vec::new();
+    push_u16(&mut chain, to_u16(payload.len()));
+    chain.extend_from_slice(payload);
+    let entry = SyntheticEntry::chain(
+        "CHAIN.BIN",
+        SINGLE_BLOCK_CHAIN_TREE_BYTES,
+        declared,
+        chain.len(),
+    );
+    let blocks = [SyntheticBlock::new(ROOT_DIRECTORY_NAME, &[entry])];
+    synthetic_archive(&blocks, &[chain], SINGLE_BLOCK_CHAIN_TREE_BYTES)
+}
+
 // --- the synthetic archives ---------------------------------------------------
 
-/// Two directories and five entries, with the field values the spec measures on
-/// the two reference archives. Every field is distinct where it can be, so a
-/// reader that swaps two of them fails.
+/// Two directories and five entries.
+///
+/// Two of the rows are measured: `COLOR.PAL` is the first entry of MASTER.DAT
+/// and `CRITTERS.LST` the first entry of CRITTER.DAT, with the field values
+/// `docs/spec/dat.md` records for them (sections 1.1 and 1.2, and the ledger
+/// constants `DAT-C070`, `DAT-C080` and `DAT-C081`).
+///
+/// The other three rows are named `SYNTH.*` and carry arbitrary fixture values,
+/// distinct from each other and from the measured rows so a reader that swaps
+/// two fields cannot pass. They are not corpus rows. A fixture that borrows a
+/// corpus constant for an unrelated entry is how a reader ends up believing
+/// that entry lives at that offset, so nothing here carries one.
 fn synthetic_round_trip() -> Vec<u8> {
     let root_entries = [
         SyntheticEntry::chain("COLOR.PAL", 211_060_669, 33_536, 9_292),
-        SyntheticEntry::chain("FONT0.AAF", 556_484, 6_337, 2_314),
-        SyntheticEntry::chain("FONT5.FON", 900_000, 4_096, 900),
+        SyntheticEntry::chain("SYNTH.PAL", 700_000, 4_100, 900),
+        SyntheticEntry::chain("SYNTH.FON", 800_000, 6_400, 2_400),
     ];
     let named_entries = [
         SyntheticEntry::chain("CRITTERS.LST", 158_356, 646, 405),
-        SyntheticEntry::stored("BIG.FRM", 1_000, 32),
+        SyntheticEntry::stored("SYNTH.FRM", 1_000, 32),
     ];
     let blocks = [
         SyntheticBlock::new(ROOT_DIRECTORY_NAME, &root_entries),
@@ -961,6 +1269,33 @@ fn synthetic_chain() -> Vec<u8> {
     let blocks = [SyntheticBlock::new("CHAIN", &entries)];
     let payloads = [chain_payload_raw_first(), chain_payload_lzss_first()];
     synthetic_archive(&blocks, &payloads, CHAIN_TREE_BYTES)
+}
+
+/// One chain of two LZSS blocks, the second of which reads the ring slot the
+/// first one wrote (DAT-019).
+///
+/// A chain of one LZSS block cannot tell a fresh ring from a carried one, so
+/// this fixture has two: block A writes one literal into slot 4078 and block B
+/// reads an eighteen byte run out of that slot.
+fn synthetic_two_block_chain() -> Vec<u8> {
+    let entry = SyntheticEntry::chain(
+        "TWO.BIN",
+        TWO_BLOCK_TREE_BYTES,
+        TWO_BLOCK_UNCOMPRESSED_SIZE,
+        TWO_BLOCK_COMPRESSED_SIZE,
+    );
+    let blocks = [SyntheticBlock::new(ROOT_DIRECTORY_NAME, &[entry])];
+    synthetic_archive(&blocks, &[two_block_chain_payload()], TWO_BLOCK_TREE_BYTES)
+}
+
+/// The stored bytes of the two block chain: block A's frame, then block B's.
+fn two_block_chain_payload() -> Vec<u8> {
+    let mut out = Vec::new();
+    push_u16(&mut out, TWO_BLOCK_A_HEADER);
+    out.extend_from_slice(&TWO_BLOCK_A_PAYLOAD);
+    push_u16(&mut out, TWO_BLOCK_B_HEADER);
+    out.extend_from_slice(&TWO_BLOCK_B_PAYLOAD);
+    out
 }
 
 /// One entry per payload mode, every one declaring nineteen output bytes, which is
@@ -1090,7 +1425,11 @@ fn synthetic_round_trip_reads_every_field() {
     let bytes = synthetic_round_trip();
     let archive = synthetic_parse(&bytes, "synthetic_round_trip_reads_every_field");
 
-    assert_eq!(ROOT_HEADER_SIZE, 16, "the root header is four u32");
+    assert_eq!(
+        ROOT_HEADER_SIZE,
+        ledger_value(DAT_CONSTANTS_LEDGER, "DAT-C001"),
+        "the root header is four u32"
+    );
     assert_eq!(
         bytes.len(),
         ROUND_TRIP_TREE_BYTES,
@@ -1133,8 +1472,8 @@ fn synthetic_round_trip_reads_every_field() {
 
     let expected: [(String, u32, u32, u32, u32); ROUND_TRIP_ENTRIES] = [
         ("COLOR.PAL".to_owned(), 0x40, 211_060_669, 33_536, 9_292),
-        ("FONT0.AAF".to_owned(), 0x40, 556_484, 6_337, 2_314),
-        ("FONT5.FON".to_owned(), 0x40, 900_000, 4_096, 900),
+        ("SYNTH.PAL".to_owned(), 0x40, 700_000, 4_100, 900),
+        ("SYNTH.FON".to_owned(), 0x40, 800_000, 6_400, 2_400),
         (
             NAMED_DIRECTORY.to_owned() + "\\CRITTERS.LST",
             0x40,
@@ -1142,7 +1481,13 @@ fn synthetic_round_trip_reads_every_field() {
             646,
             405,
         ),
-        (NAMED_DIRECTORY.to_owned() + "\\BIG.FRM", 0x20, 1_000, 32, 0),
+        (
+            NAMED_DIRECTORY.to_owned() + "\\SYNTH.FRM",
+            0x20,
+            1_000,
+            32,
+            0,
+        ),
     ];
     for (index, want) in expected.iter().enumerate() {
         let got = entries.get(index).expect("entry index in range");
@@ -1164,6 +1509,149 @@ fn synthetic_round_trip_reads_every_field() {
         entries[3].path.as_str(),
         "ART\\CRITTERS\\CRITTERS.LST",
         "prefix from a named directory"
+    );
+
+    // The class 4 cross-check. The reference tree walker was written from
+    // `docs/spec/dat.md` alone and is never imported by production code, so it
+    // is an independent second walk of the same bytes. It must find the same
+    // tree, the same paths and the same four fields of every entry.
+    let reference = RefDatTree::walk(&bytes).expect("the reference walker accepts the fixture");
+    assert_eq!(
+        reference.declared_directory_count(),
+        ROUND_TRIP_DIRECTORIES_FIELD,
+        "the reference walker reads the root's field 0 as the directory count"
+    );
+    assert_eq!(
+        reference.directory_count(),
+        ROUND_TRIP_DIRECTORIES,
+        "the reference walker's directory count"
+    );
+    assert_eq!(
+        reference.entries_total(),
+        ROUND_TRIP_ENTRIES,
+        "the reference walker's entry count"
+    );
+    assert_eq!(
+        reference.duplicate_paths().len(),
+        0,
+        "the reference walker found no duplicate composed path"
+    );
+    assert_eq!(
+        reference.directory_names(),
+        vec![ROOT_DIRECTORY_NAME, NAMED_DIRECTORY],
+        "the reference walker's directory names"
+    );
+    for (index, directory) in reference.directories().iter().enumerate() {
+        let mine = archive
+            .directories()
+            .get(index)
+            .expect("directory index in range");
+        assert_eq!(
+            mine.name.as_str(),
+            directory.name.as_str(),
+            "directory name"
+        );
+        assert_eq!(
+            mine.entry_count,
+            to_u32(directory.entries.len()),
+            "directory entry count"
+        );
+    }
+    let reference_entries: Vec<&RefEntry> = reference
+        .directories()
+        .iter()
+        .flat_map(|directory| directory.entries.iter())
+        .collect();
+    assert_eq!(
+        reference_entries.len(),
+        entries.len(),
+        "the two walks found the same number of entries"
+    );
+    for (mine, theirs) in entries.iter().zip(reference_entries.iter()) {
+        let directory = &reference.directories()[theirs.directory_index].name;
+        assert_eq!(
+            mine.path.as_str(),
+            theirs.path(directory).as_str(),
+            "entry path"
+        );
+        assert_eq!(mine.flags, theirs.flags, "entry flags");
+        assert_eq!(mine.offset, theirs.offset, "entry offset");
+        assert_eq!(
+            mine.uncompressed_size, theirs.uncompressed_size,
+            "entry uncompressed size"
+        );
+        assert_eq!(
+            mine.compressed_size, theirs.compressed_size,
+            "entry compressed size"
+        );
+    }
+}
+
+/// claim: DAT-002, DAT-003
+/// oracle: class 4 (independent reference implementation) and class 5 (hand computed vectors from the spec)
+#[test]
+fn synthetic_the_directory_list_is_the_root_header_names_in_file_order() {
+    // The spec's own CRITTER.DAT directory list: one name, `ART\CRITTERS`
+    // (DAT-003). The accessor has to report that list and nothing else, so an
+    // accessor that returned an empty list, or a list of the wrong length, or
+    // the names in the wrong order, fails here and not somewhere else.
+    let named = synthetic_named_directory();
+    let named_archive = synthetic_parse(
+        &named,
+        "synthetic_the_directory_list_is_the_root_header_names_in_file_order",
+    );
+    let named_directories = named_archive.directories();
+    assert_eq!(
+        named_directories.len(),
+        SINGLE_DIRECTORY_COUNT,
+        "the archive whose only directory is the spec's CRITTER.DAT name reports one directory"
+    );
+    assert_eq!(
+        named_directories[0].name.as_str(),
+        NAMED_DIRECTORY,
+        "the only directory is the name the spec gives CRITTER.DAT"
+    );
+
+    // The round trip archive: two directories, the `.` root first and the named
+    // one second, in file order (DAT-003, with the count from DAT-002's field 0).
+    let bytes = synthetic_round_trip();
+    let archive = synthetic_parse(
+        &bytes,
+        "synthetic_the_directory_list_is_the_root_header_names_in_file_order",
+    );
+    let directories = archive.directories();
+    assert_eq!(
+        directories.len(),
+        ROUND_TRIP_DIRECTORIES,
+        "the directory count is the root header's field 0"
+    );
+    assert_eq!(
+        directories[0].name.as_str(),
+        ROOT_DIRECTORY_NAME,
+        "directory 0 is the root directory"
+    );
+    assert_eq!(
+        directories[1].name.as_str(),
+        NAMED_DIRECTORY,
+        "directory 1 is the named directory"
+    );
+
+    // The class 4 cross-check. The reference tree walker was written from
+    // `docs/spec/dat.md` alone and is never imported by production code, so it
+    // is an independent second walk of the same bytes. It has to find the same
+    // directory list, in the same order.
+    let named_reference =
+        RefDatTree::walk(&named).expect("the reference walker accepts the fixture");
+    assert_eq!(
+        named_reference.directory_names(),
+        vec![NAMED_DIRECTORY],
+        "the reference walker's directory names"
+    );
+    let reference = RefDatTree::walk(&bytes).expect("the reference walker accepts the fixture");
+    assert_eq!(
+        reference.directory_names(),
+        vec![ROOT_DIRECTORY_NAME, NAMED_DIRECTORY],
+        "the reference walker's directory names"
     );
 }
 
@@ -1244,15 +1732,18 @@ fn synthetic_block_field_2_is_the_trailer_width_not_the_record_size() {
     // sixteen, and a reader that strided by field 2 would start entry 1 four bytes
     // into entry 0's name and read `000.FRM` instead of `GRID000.FRM`.
     assert_eq!(
-        WIDTH_GRID000_FRM, 28,
-        "an eleven byte name gives a twenty eight byte record"
+        WIDTH_GRID000_FRM,
+        ledger_value(DAT_CONSTANTS_LEDGER, "DAT-C004") + "GRID000.FRM".len(),
+        "the ledger's minimum record plus the name's eleven bytes"
     );
     assert_ne!(
-        WIDTH_GRID000_FRM, ENTRY_TRAILER_WIDTH,
+        WIDTH_GRID000_FRM,
+        ledger_value(DAT_CONSTANTS_LEDGER, "DAT-C003"),
         "the first record is not sixteen bytes wide"
     );
     assert_ne!(
-        WIDTH_A, ENTRY_TRAILER_WIDTH,
+        WIDTH_A,
+        ledger_value(DAT_CONSTANTS_LEDGER, "DAT-C003"),
         "the second record is not sixteen bytes wide"
     );
     assert_eq!(
@@ -1287,7 +1778,8 @@ fn synthetic_dot_directory_name_composes_no_prefix_and_a_named_one_does() {
         "hand computed tree length with the thirteen byte name"
     );
     assert_eq!(
-        NAME_LENGTH_GAP, 11,
+        NAME_LENGTH_GAP,
+        NAMED_DIRECTORY.len() - ledger_value(DAT_CONSTANTS_LEDGER, "DAT-C151"),
         "the longer directory name is eleven bytes longer on disk"
     );
 
@@ -1355,7 +1847,11 @@ fn synthetic_dot_directory_name_composes_no_prefix_and_a_named_one_does() {
 /// oracle: class 6 (algebraic law: the mode is the flags high nibble, and zero means 0x10)
 #[test]
 fn synthetic_payload_mode_is_the_flags_high_nibble() {
-    assert_eq!(MODE_MASK, 0xF0, "the mode mask is the high nibble");
+    assert_eq!(
+        MODE_MASK,
+        to_u32(ledger_value(DAT_CONSTANTS_LEDGER, "DAT-C040")),
+        "the mode mask is the high nibble"
+    );
 
     let mut checked = 0usize;
     for (flags, expected_name) in PAYLOAD_MODE_CASES {
@@ -1506,23 +2002,34 @@ fn synthetic_stored_entry_takes_the_uncompressed_size_and_rejects_a_nonzero_comp
     );
 }
 
-/// claim: DAT-016, DAT-018, DAT-019, DAT-020
+/// claim: DAT-016, DAT-018, DAT-020
 /// oracle: class 4 (independent reference implementation) and class 5 (hand computed vectors from the spec)
 #[test]
 fn synthetic_chain_mixes_one_raw_block_and_one_lzss_block_in_stored_order() {
     assert_eq!(
-        BLOCK_RAW_FLAG, 0x8000,
+        BLOCK_RAW_FLAG,
+        to_u16(ledger_value(DAT_CONSTANTS_LEDGER, "DAT-C050")),
         "bit 15 of a block header marks a raw block"
     );
-    assert_eq!(BLOCK_RAW_LENGTH_MASK, 0x7FFF, "the raw length mask");
+    assert_eq!(
+        BLOCK_RAW_LENGTH_MASK,
+        to_u16(ledger_value(DAT_CONSTANTS_LEDGER, "DAT-C051")),
+        "the raw length mask"
+    );
     assert_eq!(
         RAW_BLOCK_HEADER & BLOCK_RAW_LENGTH_MASK,
         to_u16(RAW_BLOCK_PAYLOAD.len()),
         "the raw frame header declares its own payload length"
     );
     assert_eq!(
-        LZSS_BLOCK_HEADER, 3,
-        "the lzss frame header declares three bytes"
+        LZSS_BLOCK_HEADER,
+        to_u16(LZSS_BLOCK_PAYLOAD.len()),
+        "the lzss frame header declares its own payload length"
+    );
+    assert_eq!(
+        to_u32(LZSS_BLOCK_OUTPUT),
+        to_u32(ledger_value(LZSS_CONSTANTS_LEDGER, "LZSS-C036")),
+        "the spec's worked vector decodes to the ledger's eighteen bytes"
     );
 
     let bytes = synthetic_chain();
@@ -1596,13 +2103,151 @@ fn synthetic_chain_mixes_one_raw_block_and_one_lzss_block_in_stored_order() {
     );
     assert_eq!(lzss_stats.raw_blocks, CHAIN_RAW_BLOCKS, "raw block census");
 
-    // Each LZSS block starts with a fresh ring (DAT-019). The `00 00 0F` stream
-    // reads entirely inside the prefilled region, so it can only come out as
-    // eighteen spaces on a fresh ring and as something else on a carried one.
+    // The class 4 cross-check of the LZSS block. The reference decoder was
+    // written from `docs/spec/lzss.md` alone; given the spec's worked vector
+    // `00 00 0F` it must produce the eighteen spaces the production decoder
+    // produced (LZSS-018).
+    let reference_spaces = RefLzss::canonical()
+        .decode(&LZSS_BLOCK_PAYLOAD, LZSS_BLOCK_OUTPUT)
+        .expect("the reference decoder decodes the spec's worked vector");
     assert_eq!(
+        reference_spaces.len(),
+        ledger_value(LZSS_CONSTANTS_LEDGER, "LZSS-C036"),
+        "the reference decoder's output length is the ledger's"
+    );
+    assert!(
+        reference_spaces
+            .iter()
+            .all(|byte| *byte == to_u8(ledger_value(LZSS_CONSTANTS_LEDGER, "LZSS-C002"))),
+        "every byte of the vector is the ledger's prefill"
+    );
+    assert_eq!(
+        reference_spaces.as_slice(),
         lzss_block_output().as_slice(),
-        vec![0x20u8; LZSS_BLOCK_OUTPUT].as_slice(),
-        "the LZSS block contributes eighteen prefilled spaces"
+        "the reference decoder and the production decoder agree on the vector"
+    );
+
+    // The class 4 cross-check of the tree. The reference walker must find the
+    // same two chains in the same bytes.
+    let reference = RefDatTree::walk(&bytes).expect("the reference walker accepts the fixture");
+    assert_eq!(
+        reference.entries_total(),
+        CHAIN_ENTRY_COUNT,
+        "the reference walker's entry count"
+    );
+    for (mine, theirs) in entries
+        .iter()
+        .zip(reference.directories()[0].entries.iter())
+    {
+        assert_eq!(
+            mine.path.as_str(),
+            theirs.path(&reference.directories()[0].name).as_str(),
+            "entry path"
+        );
+        assert_eq!(mine.flags, theirs.flags, "entry flags");
+        assert_eq!(mine.offset, theirs.offset, "entry offset");
+        assert_eq!(
+            mine.uncompressed_size, theirs.uncompressed_size,
+            "entry uncompressed size"
+        );
+        assert_eq!(
+            mine.compressed_size, theirs.compressed_size,
+            "entry compressed size"
+        );
+    }
+}
+
+/// claim: DAT-019
+/// oracle: class 4 (independent reference implementation) and class 5 (hand computed vectors from the spec)
+#[test]
+fn synthetic_a_chain_of_two_lzss_blocks_gives_each_block_a_fresh_ring() {
+    // The token of block B names ring slot 4078, the write head of a fresh
+    // ring, so a carried ring and a fresh ring cannot read the same byte.
+    assert_eq!(
+        u32::from(TWO_BLOCK_B_TOKEN[0]) | (u32::from(TWO_BLOCK_B_TOKEN[1] & 0xF0) << 4),
+        to_u32(TWO_BLOCK_B_SLOT),
+        "the token's source is the write head of a fresh ring"
+    );
+
+    let bytes = synthetic_two_block_chain();
+    assert_eq!(
+        bytes.len(),
+        TWO_BLOCK_TREE_BYTES + TWO_BLOCK_COMPRESSED_SIZE,
+        "archive length"
+    );
+    let archive = synthetic_parse(
+        &bytes,
+        "synthetic_a_chain_of_two_lzss_blocks_gives_each_block_a_fresh_ring",
+    );
+    let entries = archive.entries();
+    assert_eq!(entries.len(), TWO_BLOCK_ENTRY_COUNT, "entry count");
+    let entry = entries.first().expect("the chain entry");
+    assert_eq!(
+        payload_mode_name(payload_mode(entry.flags)),
+        "BlockChain",
+        "chain mode"
+    );
+    assert_eq!(
+        entry.compressed_size,
+        to_u32(TWO_BLOCK_COMPRESSED_SIZE),
+        "the chain's stored length"
+    );
+    assert_eq!(
+        entry.uncompressed_size,
+        to_u32(TWO_BLOCK_UNCOMPRESSED_SIZE),
+        "the chain's decoded length"
+    );
+
+    // The chain decodes to block A's literal followed by block B's eighteen
+    // bytes. A decoder that kept one ring across the chain's two blocks would
+    // give block B's run block A's literal instead of zero, so every byte of
+    // the second half would be wrong (DAT-019).
+    let mut expected = TWO_BLOCK_A_OUTPUT.to_vec();
+    expected.extend_from_slice(&TWO_BLOCK_B_OUTPUT);
+    let (out, stats) = decode_entry_with_stats(entry, &bytes).expect("the two block chain decodes");
+    assert_eq!(
+        out.as_slice(),
+        expected.as_slice(),
+        "block A's literal, then block B's eighteen bytes out of a fresh ring"
+    );
+    assert_eq!(
+        out.len(),
+        TWO_BLOCK_UNCOMPRESSED_SIZE,
+        "produced byte count"
+    );
+    assert_eq!(stats.blocks, TWO_BLOCK_BLOCKS, "block census");
+    assert_eq!(
+        stats.lzss_blocks, TWO_BLOCK_LZSS_BLOCKS,
+        "lzss block census"
+    );
+    assert_eq!(stats.raw_blocks, TWO_BLOCK_RAW_BLOCKS, "raw block census");
+
+    // The class 4 cross-check. The reference decoder was written from
+    // `docs/spec/lzss.md` alone and is never imported by production code.
+    // Given each block's own input and its own hand computed output length it
+    // must produce the same bytes the chain decoder produced.
+    let reference_a = RefLzss::canonical()
+        .decode(&TWO_BLOCK_A_PAYLOAD, TWO_BLOCK_A_OUTPUT.len())
+        .expect("the reference decoder decodes block A");
+    assert_eq!(
+        reference_a.as_slice(),
+        TWO_BLOCK_A_OUTPUT.as_slice(),
+        "block A's output"
+    );
+    let reference_b = RefLzss::canonical()
+        .decode(&TWO_BLOCK_B_PAYLOAD, TWO_BLOCK_B_OUTPUT.len())
+        .expect("the reference decoder decodes block B");
+    assert_eq!(
+        reference_b.as_slice(),
+        TWO_BLOCK_B_OUTPUT.as_slice(),
+        "block B's output"
+    );
+    let mut reference_chain = reference_a.clone();
+    reference_chain.extend_from_slice(&reference_b);
+    assert_eq!(
+        reference_chain.as_slice(),
+        out.as_slice(),
+        "the reference decoder and the chain decoder agree"
     );
 }
 
@@ -1695,6 +2340,93 @@ fn synthetic_chain_block_headers_account_for_the_compressed_size_exactly() {
         "one byte under must be rejected, got {}",
         dat_error_name(&error)
     );
+}
+
+/// claim: DAT-021
+/// oracle: class 5 (hand computed vectors from the spec: the stored region is bounded by the compressed size, and the decoded form may be longer than the file)
+#[test]
+fn synthetic_a_stored_region_is_bounded_by_the_compressed_size_not_the_uncompressed_one() {
+    // The good case. The chain stores nine bytes and decodes to twenty, so the
+    // decoded extent runs eleven bytes past the end of the archive. Seven real
+    // entries are in exactly this state, so a reader that bounds the stored
+    // region by the uncompressed size rejects valid entries (DAT-021).
+    let bytes = synthetic_chain_consumption(CONSUMPTION_EXACT, 0);
+    assert_eq!(
+        bytes.len(),
+        CONSUMPTION_TREE_BYTES + CHAIN_COMPRESSED_SIZE,
+        "archive length"
+    );
+    let archive = synthetic_parse(
+        &bytes,
+        "synthetic_a_stored_region_is_bounded_by_the_compressed_size_not_the_uncompressed_one",
+    );
+    let entries = archive.entries();
+    assert_eq!(entries.len(), CONSUMPTION_ENTRY_COUNT, "entry count");
+    let entry = entries.first().expect("one chain entry");
+    assert_eq!(
+        entry.compressed_size,
+        to_u32(CHAIN_COMPRESSED_SIZE),
+        "the chain's stored length"
+    );
+    assert_eq!(
+        entry.uncompressed_size,
+        to_u32(CHAIN_UNCOMPRESSED_SIZE),
+        "the chain's decoded length"
+    );
+    assert_eq!(
+        to_u32(to_usize(entry.offset) + CHAIN_COMPRESSED_SIZE),
+        to_u32(bytes.len()),
+        "the stored region lands exactly on the end of the archive"
+    );
+    assert_eq!(
+        to_u32(to_usize(entry.offset) + CHAIN_UNCOMPRESSED_SIZE),
+        to_u32(bytes.len() + CONSUMPTION_DECODED_OVERRUN),
+        "the decoded region runs eleven bytes past the end of the archive"
+    );
+    let decoded = decode_entry(entry, &bytes).expect("the chain still decodes");
+    assert_eq!(
+        decoded.as_slice(),
+        chain_output_raw_first().as_slice(),
+        "the chain's twenty decoded bytes"
+    );
+    assert_eq!(
+        decoded.len(),
+        CHAIN_UNCOMPRESSED_SIZE,
+        "produced byte count"
+    );
+
+    // The refusal case, and the twin of the case above: the same chain, one
+    // byte longer in its stored form than the archive holds. The stored region
+    // is bounded by the compressed size, so this one is refused (DAT-021).
+    let over_bytes = synthetic_chain_consumption(CONSUMPTION_ONE_OVER, 0);
+    assert_eq!(
+        over_bytes.len(),
+        CONSUMPTION_TREE_BYTES + CHAIN_COMPRESSED_SIZE,
+        "the archive holds nine payload bytes"
+    );
+    let over_archive = synthetic_parse(
+        &over_bytes,
+        "synthetic_a_stored_region_is_bounded_by_the_compressed_size_not_the_uncompressed_one",
+    );
+    let over_entry = over_archive.entries().first().expect("one chain entry");
+    assert_eq!(
+        over_entry.compressed_size,
+        to_u32(CONSUMPTION_ONE_OVER),
+        "this chain declares one byte more than the archive holds"
+    );
+    match decoded_error(
+        decode_entry(over_entry, &over_bytes),
+        "synthetic_a_stored_region_is_bounded_by_the_compressed_size_not_the_uncompressed_one: one byte over",
+    ) {
+        DatError::OutOfBounds { at } => {
+            assert_eq!(
+                at,
+                u64::from(over_entry.offset) + u64::from(to_u32(CONSUMPTION_ONE_OVER)),
+                "the bound is the end of the stored region"
+            );
+        }
+        other => panic!("expected OutOfBounds, got {}", dat_error_name(&other)),
+    }
 }
 
 /// claim: DAT-023, DAT-024
@@ -1981,16 +2713,19 @@ fn synthetic_lookup_is_by_uppercased_path_and_an_absent_path_is_not_an_error() {
     );
 }
 
-/// claim: DAT-017
-/// oracle: class 6 (algebraic law: a total reader has no panic path, so every single bit flip answers)
+/// claim: DAT-002
+/// oracle: class 5 (hand computed vectors from the spec: the three discarded root fields change nothing, and the directory count is the only field that changes the answer) and class 6 (algebraic law: a parse that succeeds reports exactly the number of directories the header declares)
 #[test]
 fn synthetic_every_bit_flip_of_the_root_header_answers_without_panicking() {
     let base = synthetic_lookup();
     assert_eq!(base.len(), LOOKUP_TREE_BYTES, "hand computed tree length");
-    synthetic_parse(
+    let archive = synthetic_parse(
         &base,
         "synthetic_every_bit_flip_of_the_root_header_answers_without_panicking",
     );
+    let directories = archive.directories().len();
+    let entries = archive.entries().len();
+    let entry = archive.entries().first().expect("the one entry");
 
     let mut answered = 0usize;
     for bit in 0..ROOT_HEADER_BITS {
@@ -1999,9 +2734,82 @@ fn synthetic_every_bit_flip_of_the_root_header_answers_without_panicking() {
         let mask = 1u8 << (bit % 8);
         mutated[byte_index] ^= mask;
         let outcome = DatArchive::parse(&mutated, SYNTHETIC_ORIGIN);
-        // Either answer is correct here, so both are accepted. Reaching the count
-        // below is the assertion: a panic would have stopped the test.
-        assert!(outcome.is_ok() || outcome.is_err(), "the bit flip answered");
+        // The root header is four u32 (DAT-001). Field 0 is the directory
+        // count; fields 1, 2 and 3 are read and discarded (DAT-002). So a flip
+        // in field 0 is the only one that can change the answer, and a flip in
+        // the other three must change nothing at all. Every one of them must
+        // answer with a value and never with a panic.
+        if byte_index < ROOT_FIELD_0_WIDTH {
+            // The mutated count. The base holds one directory, so a flip either
+            // clears the count to zero or grows it past what the archive holds.
+            let count = u32::from_be_bytes([mutated[0], mutated[1], mutated[2], mutated[3]]);
+            if count == 0 {
+                // No directories means no names and no blocks, and the tree
+                // still parses.
+                let parsed = match outcome {
+                    Ok(parsed) => parsed,
+                    Err(error) => panic!(
+                        "a cleared directory count must parse, got {}",
+                        dat_error_name(&error)
+                    ),
+                };
+                assert_eq!(parsed.directories().len(), 0, "no directories");
+                assert_eq!(parsed.entries().len(), 0, "no entries");
+            } else {
+                // A count the bytes cannot satisfy is refused, and refused by a
+                // layout error rather than by a panic.
+                match outcome {
+                    Ok(_) => panic!("a directory count the archive cannot satisfy must be refused"),
+                    Err(error) => assert!(
+                        is_tree_layout_error(&error),
+                        "a refused tree is a layout error, got {}",
+                        dat_error_name(&error)
+                    ),
+                }
+            }
+        } else {
+            // A discarded field. The parse answers with exactly the archive it
+            // answered with before the flip.
+            let parsed = match outcome {
+                Ok(parsed) => parsed,
+                Err(error) => panic!(
+                    "a discarded field never refuses the archive, got {}",
+                    dat_error_name(&error)
+                ),
+            };
+            assert_eq!(
+                parsed.directories().len(),
+                directories,
+                "a discarded field changes nothing"
+            );
+            assert_eq!(
+                parsed.entries().len(),
+                entries,
+                "a discarded field changes nothing"
+            );
+            let parsed_entry = parsed.entries().first().expect("the one entry");
+            assert_eq!(
+                parsed_entry.path.as_str(),
+                entry.path.as_str(),
+                "a discarded field changes nothing"
+            );
+            assert_eq!(
+                parsed_entry.flags, entry.flags,
+                "a discarded field changes nothing"
+            );
+            assert_eq!(
+                parsed_entry.offset, entry.offset,
+                "a discarded field changes nothing"
+            );
+            assert_eq!(
+                parsed_entry.uncompressed_size, entry.uncompressed_size,
+                "a discarded field changes nothing"
+            );
+            assert_eq!(
+                parsed_entry.compressed_size, entry.compressed_size,
+                "a discarded field changes nothing"
+            );
+        }
         answered += 1;
     }
     assert_eq!(
@@ -2010,9 +2818,8 @@ fn synthetic_every_bit_flip_of_the_root_header_answers_without_panicking() {
     );
 }
 
-/// claim: DAT-017
-/// oracle: class 5 (hand computed vectors from the spec: a tree that claims more bytes than the
-/// buffer holds is an error)
+/// claim: DAT-002, DAT-003
+/// oracle: class 5 (hand computed vectors from the spec: a tree that claims more bytes than the buffer holds is an error)
 #[test]
 fn synthetic_malformed_trees_are_errors() {
     let base = synthetic_lookup();
@@ -2068,7 +2875,7 @@ fn synthetic_malformed_trees_are_errors() {
     );
 }
 
-/// claim: DAT-017
+/// claim: DAT-033, DAT-034
 /// oracle: class 5 (hand-computed / specified behaviour, NOT class 4: the guide and the spec are
 /// silent on both cases, so nothing here is established by an independent reference
 /// implementation. The oracle happens to agree; agreement without a rule is not a rule.)
@@ -2132,4 +2939,252 @@ fn synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted() {
         accepted, ACCEPTED_TREE_COUNT,
         "every ruled-accepted case accepted"
     );
+}
+
+/// claim: DAT-030, DAT-001
+/// oracle: class 5 (hand computed vectors from the spec: the root header is four big endian u32, so its third field starts at byte 8 and a ten byte tree runs out there)
+#[test]
+fn synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at() {
+    // The good input twin. A complete synthetic archive goes through the same
+    // reader and is accepted, so the refusal below is about the ten bytes and
+    // not about the fixture or about the reader refusing everything.
+    let complete = synthetic_lookup();
+    let twin = synthetic_parse(
+        &complete,
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the complete archive",
+    );
+    assert_eq!(
+        twin.directories().len(),
+        SINGLE_DIRECTORY_COUNT,
+        "the complete archive has its one directory"
+    );
+    assert_eq!(
+        twin.entries().len(),
+        SINGLE_BLOCK_ENTRIES,
+        "the complete archive has its one entry"
+    );
+    assert_eq!(
+        complete.len(),
+        LOOKUP_TREE_BYTES,
+        "hand computed tree length"
+    );
+
+    // The refusal. Ten bytes of zeroes: a root header that stops two bytes into
+    // its third field.
+    let truncated = [0u8; TRUNCATED_TREE_BYTES];
+    assert_eq!(truncated.len(), 10, "hand computed truncation length");
+    assert_eq!(
+        ROOT_FIELD_2_OFFSET, 8,
+        "the root header's third u32 starts at byte 8"
+    );
+
+    // The root header is four big endian u32 (DAT-001): field 0 covers bytes
+    // 0..4, field 1 covers 4..8 and field 2 covers 8..12. A ten byte buffer
+    // leaves two of the four bytes field 2 needs, so the read that runs out is
+    // the one that starts at byte 8. The error carries that position (DAT-030),
+    // which is the whole claim: the refusal says where it ran out and not only
+    // that it ran out.
+    let error = match DatArchive::parse(&truncated, SYNTHETIC_ORIGIN) {
+        Ok(_) => panic!("a ten byte tree must be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error,
+        DatError::Truncated { at: TRUNCATED_AT },
+        "a ten byte tree runs out at byte 8, where the root header's third u32 starts"
+    );
+}
+
+/// claim: DAT-030
+/// oracle: class 5 (hand computed vectors from the spec: the origin label handed to `parse` is the label the archive carries)
+#[test]
+fn synthetic_the_archive_reports_the_label_it_was_parsed_under() {
+    // The good input twin, and the label every other fixture in this file is
+    // parsed under.
+    let bytes = synthetic_lookup();
+    let archive = synthetic_parse(
+        &bytes,
+        "synthetic_the_archive_reports_the_label_it_was_parsed_under",
+    );
+    assert_eq!(
+        archive.entries().len(),
+        SINGLE_BLOCK_ENTRIES,
+        "the archive has its one entry"
+    );
+    assert_eq!(
+        archive.origin(),
+        SYNTHETIC_ORIGIN,
+        "the archive reports the label it was parsed under"
+    );
+
+    // The same bytes under a second label. The label travels with the parse
+    // and not with the archive bytes, so the archive reports the label it was
+    // parsed under this time.
+    let relabelled = match DatArchive::parse(&bytes, SYNTHETIC_ALT_ORIGIN) {
+        Ok(parsed) => parsed,
+        Err(error) => panic!(
+            "the same complete archive must parse under a second label, got {}",
+            dat_error_name(&error)
+        ),
+    };
+    assert_eq!(
+        relabelled.origin(),
+        SYNTHETIC_ALT_ORIGIN,
+        "the label follows the parse, not the bytes"
+    );
+    assert_eq!(
+        relabelled.entries().len(),
+        archive.entries().len(),
+        "the same archive under a second label"
+    );
+}
+
+/// claim: DAT-030, DAT-024
+/// oracle: class 5 (hand computed vectors from the spec: every error variant names the quantity it is about)
+#[test]
+fn synthetic_every_error_variant_names_what_went_wrong() {
+    assert_eq!(
+        DAT_ERROR_CASES.len(),
+        DAT_ERROR_CASE_COUNT,
+        "every variant of the error type is graded"
+    );
+
+    let mut rendered: Vec<String> = Vec::new();
+    for (name, error, quantities) in DAT_ERROR_CASES {
+        let text = error.to_string();
+        assert_eq!(
+            dat_error_name(&error),
+            name,
+            "the row names the variant it holds"
+        );
+        assert!(!text.is_empty(), "{name}: the message must not be empty");
+        for quantity in quantities {
+            assert!(
+                reports_number(&text, *quantity),
+                "{name}: the message must name {quantity}"
+            );
+        }
+        rendered.push(text);
+    }
+    assert_eq!(
+        rendered.len(),
+        DAT_ERROR_CASE_COUNT,
+        "every variant rendered a message"
+    );
+
+    // Two variants that rendered the same text would not be saying what went
+    // wrong, so the nine messages have to differ from one another.
+    let mut sorted = rendered.clone();
+    sorted.sort();
+    assert!(
+        sorted.windows(2).all(|pair| pair[0] != pair[1]),
+        "every variant must render a message of its own"
+    );
+}
+
+/// claim: DAT-018, DAT-024, LZSS-014, LZSS-015
+/// oracle: class 5 (hand computed vectors from the spec: a back reference that runs out of input is an overrun when the declaration was already met and a truncation when it was not)
+#[test]
+fn synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met() {
+    // The positive control, and the twin of both refusals below. The block is
+    // the spec's worked vector `00 00 0F` (LZSS-018): a control byte of zero,
+    // then a back reference of source 0 and length 18, which lands in the
+    // prefilled `0x20` region and decodes to eighteen spaces. The pair is
+    // complete, the entry declares eighteen bytes, so the declaration is met
+    // exactly and the chain decodes.
+    let complete_bytes = synthetic_single_lzss_chain(&LZSS_BLOCK_PAYLOAD, LZSS_BLOCK_OUTPUT);
+    let complete_archive = synthetic_parse(
+        &complete_bytes,
+        "synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met",
+    );
+    let complete_entries = complete_archive.entries();
+    assert_eq!(
+        complete_entries.len(),
+        SINGLE_BLOCK_CHAIN_ENTRY_COUNT,
+        "one chain entry"
+    );
+    let complete_entry = complete_entries.first().expect("one chain entry");
+    assert_eq!(
+        complete_entry.uncompressed_size,
+        to_u32(LZSS_BLOCK_OUTPUT),
+        "the declared output size"
+    );
+    assert_eq!(
+        complete_entry.compressed_size,
+        to_u32(SINGLE_BLOCK_CHAIN_COMPLETE_COMPRESSED),
+        "the frame header plus its three payload bytes"
+    );
+    let complete_out =
+        decode_entry(complete_entry, &complete_bytes).expect("the complete pair decodes");
+    assert_eq!(
+        complete_out.as_slice(),
+        lzss_block_output().as_slice(),
+        "the complete pair decodes to eighteen spaces"
+    );
+    assert_eq!(complete_out.len(), LZSS_BLOCK_OUTPUT, "produced byte count");
+
+    // One byte shorter: the control byte and the first byte of the pair, and
+    // nothing else. A back reference needs two input bytes and one is left
+    // (LZSS-015), so the block cannot finish. Nothing had been decoded when
+    // the pair started, so the entry was still owed all eighteen bytes: the
+    // declaration was NOT met, and the container reports the truncation rather
+    // than an overrun (DAT-024: the declared size exists to detect tokens
+    // writing past it, and no token could have written more than the eighteen
+    // bytes that were left, since a match is 3 to 18 bytes, LZSS-008).
+    let cut_bytes = synthetic_single_lzss_chain(&LZSS_CUT_PAIR_PAYLOAD, LZSS_BLOCK_OUTPUT);
+    let cut_archive = synthetic_parse(
+        &cut_bytes,
+        "synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met",
+    );
+    let cut_entry = cut_archive.entries().first().expect("one chain entry");
+    assert_eq!(
+        cut_entry.compressed_size,
+        to_u32(SINGLE_BLOCK_CHAIN_CUT_COMPRESSED),
+        "the frame header plus its two payload bytes"
+    );
+    let cut_error = decoded_error(
+        decode_entry(cut_entry, &cut_bytes),
+        "synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met: the pair is cut",
+    );
+    // The offset is not asserted: the spec fixes that the input ran out, not
+    // which byte of the incomplete pair the container names.
+    assert_eq!(
+        dat_error_name(&cut_error),
+        "Truncated",
+        "the declaration was not met when the input ran out, so this is a truncation and not an overrun"
+    );
+
+    // The boundary. The block fills the declaration exactly and then runs out
+    // in the middle of a second back reference. The declaration WAS met when
+    // the input ran out, so the tokens still pending behind the control byte
+    // would have written past it (DAT-024), and the container reports the
+    // overrun.
+    let full_bytes =
+        synthetic_single_lzss_chain(&LZSS_FULL_THEN_CUT_PAIR_PAYLOAD, LZSS_BLOCK_OUTPUT);
+    let full_archive = synthetic_parse(
+        &full_bytes,
+        "synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met",
+    );
+    let full_entry = full_archive.entries().first().expect("one chain entry");
+    assert_eq!(
+        full_entry.compressed_size,
+        to_u32(SINGLE_BLOCK_CHAIN_FULL_THEN_CUT_COMPRESSED),
+        "the frame header plus its four payload bytes"
+    );
+    match decoded_error(
+        decode_entry(full_entry, &full_bytes),
+        "synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met: the declaration was met",
+    ) {
+        DatError::OutputOverrun { declared } => {
+            assert_eq!(
+                declared,
+                to_u32(LZSS_BLOCK_OUTPUT),
+                "the declared output size the entry promised"
+            );
+        }
+        other => panic!(
+            "expected OutputOverrun, got {}",
+            dat_error_name(&other)
+        ),
+    }
 }

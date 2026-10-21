@@ -545,6 +545,43 @@ here may be guessed from a Community Edition table.
 
 ---
 
+## Error text
+
+```rust
+impl fmt::Display for ExeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExeError::Header { offset, field } => {
+                write!(f, "bad PE header field {field} at file offset 0x{offset:X}")
+            }
+            ExeError::Unmapped { va } => write!(f, "virtual address 0x{va:08X} is in no section"),
+            ExeError::RangeOverflow { va } => {
+                write!(f, "address arithmetic overflowed for 0x{va:08X}")
+            }
+            ExeError::OutsideFile { offset, len } => {
+                write!(
+                    f,
+                    "read of {len} bytes at file offset 0x{offset:X} runs past the end of \
+                     its section or of the file"
+                )
+            }
+            ExeError::FieldOutOfRange { offset, field } => {
+                write!(f, "field {field} at byte offset 0x{offset:X} is outside the record")
+            }
+            ExeError::RecordCount { va, expected, observed } => write!(
+                f,
+                "table at 0x{va:08X} declared {expected} records but {observed} were read"
+            ),
+            ExeError::BuildMismatch { expected_sha256, observed_sha256 } => write!(
+                f,
+                "executable digest {observed_sha256} is not the reference build {expected_sha256}; \
+                 this build's table constants are unknown and are not guessed"
+            ),
+        }
+    }
+}
+```
+
 ## The Rust interface
 
 The crate this feeds carries `#![deny(clippy::arithmetic_side_effects)]`. The
@@ -626,44 +663,14 @@ pub enum ExeError {
     /// under this section's address.
     OutsideFile { offset: usize, len: usize },
     /// A record field fell outside the record that was read.
+    ///
+    /// `offset` is a byte offset. Where the field belongs to a table, it is
+    /// measured from the start of that table, not from the start of the file.
     FieldOutOfRange { offset: usize, field: &'static str },
     /// The table held a different number of records than its declared shape.
     RecordCount { va: u32, expected: usize, observed: usize },
     /// The digest is not the reference digest. Never relaxed.
     BuildMismatch { expected_sha256: &'static str, observed_sha256: String },
-}
-
-impl fmt::Display for ExeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ExeError::Header { offset, field } => {
-                write!(f, "bad PE header field {field} at file offset 0x{offset:X}")
-            }
-            ExeError::Unmapped { va } => write!(f, "virtual address 0x{va:08X} is in no section"),
-            ExeError::RangeOverflow { va } => {
-                write!(f, "address arithmetic overflowed for 0x{va:08X}")
-            }
-            ExeError::OutsideFile { offset, len } => {
-                write!(
-                    f,
-                    "read of {len} bytes at file offset 0x{offset:X} runs past the end of \
-                     its section or of the file"
-                )
-            }
-            ExeError::FieldOutOfRange { offset, field } => {
-                write!(f, "field {field} at file offset 0x{offset:X} is outside the record")
-            }
-            ExeError::RecordCount { va, expected, observed } => write!(
-                f,
-                "table at 0x{va:08X} declared {expected} records but {observed} were read"
-            ),
-            ExeError::BuildMismatch { expected_sha256, observed_sha256 } => write!(
-                f,
-                "executable digest {observed_sha256} is not the reference build {expected_sha256}; \
-                 this build's table constants are unknown and are not guessed"
-            ),
-        }
-    }
 }
 
 impl std::error::Error for ExeError {}
@@ -1043,13 +1050,19 @@ pub fn xp_thresholds(image: &PeImage<'_>) -> Result<[i32; 21], ExeError> {
 ///
 /// `checked_mul` because the scaled value overflows `i32` for a high enough
 /// level, and a wrapped total would hand out free levels.
+///
+/// A negative level is refused as `RangeOverflow { va: XP_THRESHOLDS_VA }`. A
+/// level of 21 or more is refused as `FieldOutOfRange` at the byte offset one
+/// past the last field of the 21 entry table, which is 84: the table holds 21
+/// `i32` values of 4 bytes each, and the level that is out of range is the
+/// field after the last one.
 pub fn experience_for_level(thresholds: &[i32; 21], level: i32) -> Result<i32, ExeError> {
     let index = usize::try_from(level).map_err(|_| ExeError::RangeOverflow { va: XP_THRESHOLDS_VA })?;
     let base = thresholds
         .get(index)
         .copied()
         .ok_or(ExeError::FieldOutOfRange {
-            offset: XP_THRESHOLDS_VA,
+            offset: 84,
             field: "level",
         })?;
     base.checked_mul(1_000).ok_or(ExeError::RangeOverflow { va: XP_THRESHOLDS_VA })

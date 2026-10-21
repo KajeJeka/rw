@@ -180,6 +180,12 @@ impl std::error::Error for HarnessError {
 }
 
 /// A fingerprint check result for one install file.
+///
+/// The digest is `None` for a file that is checked by size only. The two
+/// archives are 496 MB between them and their digests are never compared
+/// against anything, so hashing them cost the gate minutes per suite for no
+/// result. The executable is the file whose digest identifies the build, so it
+/// is the one that is hashed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fingerprint {
     /// Role of the file, e.g. `falloutw.exe`.
@@ -188,8 +194,8 @@ pub struct Fingerprint {
     pub path: PathBuf,
     /// Size on disk in bytes.
     pub bytes: u64,
-    /// Lowercase hex SHA-256 of the whole file.
-    pub sha256: String,
+    /// Lowercase hex SHA-256 of the whole file, when the file was hashed.
+    pub sha256: Option<String>,
 }
 
 /// A resolved, fingerprinted install of the game.
@@ -236,12 +242,20 @@ impl Install {
         let master_path = root.join(MASTER_DAT_FILE_NAME);
         let critter_path = root.join(CRITTER_DAT_FILE_NAME);
 
+        // The executable is the file whose digest identifies the build, so it
+        // is the one that is hashed. The digest is read from the file on every
+        // call and is never remembered: a digest carried over from an earlier
+        // call goes stale the moment the file's content changes without its
+        // size changing, and the gate would then admit a file it never read.
         let exe = fingerprint(&exe_path, EXE_FILE_NAME)?;
-        let master_dat = fingerprint(&master_path, MASTER_DAT_FILE_NAME)?;
-        let critter_dat = fingerprint(&critter_path, CRITTER_DAT_FILE_NAME)?;
-
         let exe = check_sha256(exe, REFERENCE_EXE_SHA256)?;
+
+        // The two archives are checked by size only. Their digests were never
+        // compared against anything, and hashing 496 MB per test was most of
+        // the gate's wall clock.
+        let master_dat = size_fingerprint(&master_path, MASTER_DAT_FILE_NAME)?;
         let master_dat = check_size(master_dat, REFERENCE_MASTER_DAT_BYTES)?;
+        let critter_dat = size_fingerprint(&critter_path, CRITTER_DAT_FILE_NAME)?;
         let critter_dat = check_size(critter_dat, REFERENCE_CRITTER_DAT_BYTES)?;
 
         Ok(Self {
@@ -370,7 +384,34 @@ pub fn install_root_from_env() -> Result<PathBuf, HarnessError> {
     }
 }
 
+/// Fingerprints a file by hashing it and by measuring it.
 fn fingerprint(path: &Path, role: &'static str) -> Result<Fingerprint, HarnessError> {
+    let bytes = file_size(path, role)?;
+    let sha256 = sha256_of_file(path)?;
+    Ok(Fingerprint {
+        role,
+        path: path.to_path_buf(),
+        bytes,
+        sha256: Some(sha256),
+    })
+}
+
+/// Fingerprints a file by its size alone, without reading it.
+///
+/// Used for the archives, whose digests are never compared against anything.
+/// The file is still measured and still has to exist.
+fn size_fingerprint(path: &Path, role: &'static str) -> Result<Fingerprint, HarnessError> {
+    let bytes = file_size(path, role)?;
+    Ok(Fingerprint {
+        role,
+        path: path.to_path_buf(),
+        bytes,
+        sha256: None,
+    })
+}
+
+/// The size of a file, after checking that it exists and is a regular file.
+fn file_size(path: &Path, role: &'static str) -> Result<u64, HarnessError> {
     if !path.exists() {
         return Err(HarnessError::MissingFile {
             role,
@@ -387,26 +428,23 @@ fn fingerprint(path: &Path, role: &'static str) -> Result<Fingerprint, HarnessEr
         path: path.to_path_buf(),
         source,
     })?;
-    let bytes = meta.len();
-    let sha256 = sha256_of_file(path)?;
-    Ok(Fingerprint {
-        role,
-        path: path.to_path_buf(),
-        bytes,
-        sha256,
-    })
+    Ok(meta.len())
 }
 
 fn check_sha256(fp: Fingerprint, expected: &str) -> Result<Fingerprint, HarnessError> {
-    if fp.sha256 != expected {
-        return Err(HarnessError::UnsupportedInstall {
+    let actual = fp.sha256.clone();
+    match actual {
+        Some(ref digest) if digest == expected => Ok(fp),
+        Some(digest) => Err(HarnessError::UnsupportedInstall {
             what: "falloutw.exe sha256",
             path: fp.path,
             expected: expected.to_string(),
-            actual: fp.sha256,
-        });
+            actual: digest,
+        }),
+        None => Err(HarnessError::InternalInvariant {
+            detail: "the executable fingerprint carries no digest, so it cannot be compared",
+        }),
     }
-    Ok(fp)
 }
 
 fn check_size(fp: Fingerprint, expected: u64) -> Result<Fingerprint, HarnessError> {
@@ -415,7 +453,7 @@ fn check_size(fp: Fingerprint, expected: u64) -> Result<Fingerprint, HarnessErro
             what: "archive size",
             path: fp.path,
             expected: format!("{expected} bytes"),
-            actual: format!("{} bytes, sha256 {}", fp.bytes, fp.sha256),
+            actual: format!("{} bytes", fp.bytes),
         });
     }
     Ok(fp)
@@ -441,4 +479,171 @@ pub fn describe(install: &Install) -> String {
 #[must_use]
 pub fn hex_of(bytes: &[u8]) -> String {
     hex(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A digest of a byte slice, computed the same way the harness computes
+    /// the digest of a file.
+    fn digest_of(bytes: &[u8]) -> String {
+        crate::sha256::sha256_of_slice(bytes).expect("a byte slice digests")
+    }
+
+    /// The build digest gate rejects an executable that is not the reference
+    /// build.
+    ///
+    /// The gate is what stands between the suite and an install the constants
+    /// do not describe, so it is checked here rather than only through the
+    /// reference install, which CI does not have. A digest that is not the
+    /// reference digest must be refused, and the refusal must name the digest
+    /// rather than a size or a missing file.
+    #[test]
+    fn the_build_digest_gate_rejects_an_executable_that_is_not_the_reference_build() {
+        // A short file that is certainly not the reference build: the reference
+        // executable is 1,243,136 bytes.
+        let foreign = b"a build that is not the reference build";
+        assert_ne!(
+            digest_of(foreign),
+            REFERENCE_EXE_SHA256,
+            "the fixture must not be the reference build, or the test proves nothing"
+        );
+
+        let path =
+            std::env::temp_dir().join(format!("rw-harness-build-gate-{}.bin", std::process::id()));
+        fs::write(&path, foreign).expect("the fixture is written");
+
+        let observed = sha256_of_file(&path).expect("the fixture digests");
+        let fp = Fingerprint {
+            role: EXE_FILE_NAME,
+            path: path.clone(),
+            bytes: foreign.len() as u64,
+            sha256: Some(observed.clone()),
+        };
+
+        let error =
+            check_sha256(fp, REFERENCE_EXE_SHA256).expect_err("a foreign build must be refused");
+        match error {
+            HarnessError::UnsupportedInstall { what, actual, .. } => {
+                assert_eq!(what, "falloutw.exe sha256", "the refusal names the digest");
+                assert_eq!(actual, observed, "the refusal reports the digest it saw");
+            }
+            other => panic!("expected an UnsupportedInstall, got {other:?}"),
+        }
+
+        let _ = fs::remove_file(&path);
+    }
+
+    /// The digest gate admits the reference digest.
+    ///
+    /// The refusal above would also be produced by a gate that refuses
+    /// everything, so the admitting half is checked too.
+    #[test]
+    fn the_build_digest_gate_admits_the_reference_digest() {
+        let fp = Fingerprint {
+            role: EXE_FILE_NAME,
+            path: PathBuf::from(EXE_FILE_NAME),
+            bytes: 1_243_136,
+            sha256: Some(REFERENCE_EXE_SHA256.to_string()),
+        };
+        let admitted =
+            check_sha256(fp, REFERENCE_EXE_SHA256).expect("the reference digest must be admitted");
+        assert_eq!(
+            admitted.sha256.as_deref(),
+            Some(REFERENCE_EXE_SHA256),
+            "the admitted fingerprint carries the reference digest"
+        );
+    }
+
+    /// A size only fingerprint carries no digest.
+    ///
+    /// The archives are checked by size alone, so their fingerprint must not
+    /// claim a digest it never computed. A fingerprint that carried a digest
+    /// anyway would be a value no test could check, which is the same defect
+    /// as a wrong constant.
+    #[test]
+    fn a_size_only_fingerprint_carries_no_digest() {
+        let path =
+            std::env::temp_dir().join(format!("rw-harness-size-only-{}.bin", std::process::id()));
+        fs::write(&path, b"an archive that is only measured").expect("the fixture is written");
+
+        let fp = size_fingerprint(&path, MASTER_DAT_FILE_NAME).expect("the fixture is measured");
+        assert_eq!(fp.bytes, 32, "the size is measured");
+        assert_eq!(
+            fp.sha256, None,
+            "a size only fingerprint must not carry a digest it never computed"
+        );
+
+        let _ = fs::remove_file(&path);
+    }
+
+    /// The executable digest is read from the file every time, so a file whose
+    /// content changed without changing its size cannot keep its old digest.
+    ///
+    /// The harness used to remember the digest of the executable per process
+    /// and reuse it while the file's size was unchanged. That made the gate
+    /// blind to the one change a size check cannot see: a file rewritten in
+    /// place with the same length. The stale digest still matched the
+    /// reference digest, so the gate admitted a file it had never read. The
+    /// digest is therefore taken from the file on every call.
+    ///
+    /// The fingerprint goes through the same path the gate uses, so the test
+    /// fails against a harness that remembers digests instead of reading them.
+    #[test]
+    fn the_executable_digest_is_read_from_the_file_every_time() {
+        let path = std::env::temp_dir().join(format!(
+            "rw-harness-fresh-digest-{}.bin",
+            std::process::id()
+        ));
+        // The two contents differ, and their lengths do not. That is the case
+        // a size keyed cache cannot see.
+        let first = b"the first contents of the file";
+        let second = b"the other contents of the file";
+        assert_eq!(
+            first.len(),
+            second.len(),
+            "the fixture must change its content without changing its size"
+        );
+
+        fs::write(&path, first).expect("the fixture is written");
+        let first_expected = digest_of(first);
+        let first_fp = fingerprint(&path, EXE_FILE_NAME).expect("the fixture fingerprints");
+        assert_eq!(
+            first_fp.sha256.as_deref(),
+            Some(first_expected.as_str()),
+            "the fingerprint carries the digest of the bytes on disk"
+        );
+
+        fs::write(&path, second).expect("the fixture is rewritten");
+        let second_expected = digest_of(second);
+        let second_fp =
+            fingerprint(&path, EXE_FILE_NAME).expect("the rewritten fixture fingerprints");
+        assert_eq!(
+            second_fp.sha256.as_deref(),
+            Some(second_expected.as_str()),
+            "the fingerprint is taken again, so it carries the digest of the bytes now on disk"
+        );
+        assert_ne!(
+            first_fp.sha256, second_fp.sha256,
+            "a file whose content changed must not keep the digest it had before"
+        );
+
+        // And the gate built from the changed file must refuse it, rather than
+        // admit it on the strength of the digest taken before the change.
+        let error = check_sha256(second_fp, REFERENCE_EXE_SHA256)
+            .expect_err("a changed file must be refused");
+        match error {
+            HarnessError::UnsupportedInstall { what, actual, .. } => {
+                assert_eq!(what, "falloutw.exe sha256", "the refusal names the digest");
+                assert_eq!(
+                    actual, second_expected,
+                    "the refusal reports the digest of the changed file, not the earlier one"
+                );
+            }
+            other => panic!("expected an UnsupportedInstall, got {other:?}"),
+        }
+
+        let _ = fs::remove_file(&path);
+    }
 }

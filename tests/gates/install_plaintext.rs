@@ -505,12 +505,18 @@ fn dat_028_three_patched_copies_differ_at_their_first_byte() {
     assert_eq!(diverged, PATCHED_COUNT, "patched copies located");
 }
 
-/// The three size exclusions, listed by name with their exact byte difference.
+/// DAT-028: the three size exclusions, listed by name with their exact byte
+/// difference.
 ///
 /// A loose file whose path matches an archive entry but whose length does not is
 /// dropped by the size match, so it never becomes a candidate and never reaches
 /// a byte comparison. Dropping it silently would be a skip; listing it is the
 /// alternative (guide: Archive gate).
+///
+/// The size match is the other half of the candidate discovery DAT-028's first
+/// test pins: the 31 candidates are the files that match on path *and* size,
+/// so the three that match on path alone are named here with the exact byte
+/// difference that excluded them.
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_three_loose_files_differ_in_size_and_are_excluded() {
@@ -543,8 +549,13 @@ fn dat_028_three_loose_files_differ_in_size_and_are_excluded() {
     assert_eq!(excluded, SIZE_EXCLUSION_COUNT, "size exclusions listed");
 }
 
-/// Every candidate lands in exactly one bucket: 28 exact and 3 patched, as a set
-/// comparison, so a name appearing in both buckets fails.
+/// DAT-028: every candidate lands in exactly one bucket: 28 exact and 3 patched,
+/// as a set comparison, so a name appearing in both buckets fails.
+///
+/// The partition is the accounting half of the candidate discovery: the set of
+/// 31 names DAT-028's first test pins is exactly the union of these two
+/// buckets, so a candidate that is neither exact nor patched, or one that is
+/// both, fails here.
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_every_candidate_is_accounted_for_in_exactly_one_bucket() {
@@ -581,8 +592,17 @@ fn dat_028_every_candidate_is_accounted_for_in_exactly_one_bucket() {
     assert_eq!(overlap, 0, "no candidate is in both buckets");
 }
 
-/// Oracle class 6: every candidate decodes to exactly its declared uncompressed
-/// size, whatever its payload mode, and its loose copy has that same length.
+/// DAT-023 and DAT-028, oracle class 6: every candidate decodes to exactly its
+/// declared uncompressed size, whatever its payload mode, and its loose copy
+/// has that same length.
+///
+/// DAT-023 is the produced-size law: a decoded entry must produce exactly the
+/// uncompressed size its record declares.
+///
+/// DAT-028 is the rule the loose copy's length is checked against: the
+/// candidates are the loose files that match an archive entry on path and on
+/// size, so a loose copy that did not carry the decoded length would not be a
+/// candidate at all.
 ///
 /// This is the algebraic law under the two buckets above: a patched copy differs
 /// in bytes, never in length, which is why the size match finds all 31.

@@ -111,6 +111,63 @@ The layer is the default for a format. Each row below is the exception to it.
 | --- | --- | --- |
 | END-035 | The DAT root header read little-endian yields 1,090,519,040 for the directory count, against the 65 the file actually holds. The asset layer is established by that magnitude mismatch, not by an absence of error, and it is the counterpart of END-006. | CONFIRMED AGAINST ORIGINAL BINARY |
 
+## Error text
+
+The wording of a refusal is ours to choose, not a fact about the game, so this
+section fixes it and the two crates render what is written here. Every message
+names the origin and the field, so a reader can tell which buffer and which
+operation failed, and no message carries a byte of the buffer (END-022,
+END-023).
+
+```rust
+impl std::fmt::Display for LittleEndianError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::Truncated {
+                offset,
+                field,
+                origin,
+                needed,
+                available,
+            } => write!(
+                formatter,
+                "{origin}: {field} at byte {offset} wanted {needed} bytes but only \
+                 {available} remain"
+            ),
+            Self::SeekOutOfRange {
+                offset,
+                field,
+                origin,
+                requested,
+                length,
+            } => write!(
+                formatter,
+                "{origin}: {field} from byte {offset} asked for {requested}, past a \
+                 buffer of {length} bytes"
+            ),
+        }
+    }
+}
+```
+
+`crates/fo1-bigendian` renders the same two sentences from the same fields in
+its own `BigEndianError`. The two crates are separate copies on purpose
+(END-011, END-012), and each one renders its own error type.
+
+| Error type | Variant | Exact text |
+| --- | --- | --- |
+| `LittleEndianError` | `Truncated` | `{origin}: {field} at byte {offset} wanted {needed} bytes but only {available} remain` |
+| `LittleEndianError` | `SeekOutOfRange` | `{origin}: {field} from byte {offset} asked for {requested}, past a buffer of {length} bytes` |
+| `BigEndianError` | `Truncated` | `{origin}: {field} at byte {offset} wanted {needed} bytes but only {available} remain` |
+| `BigEndianError` | `SeekOutOfRange` | `{origin}: {field} from byte {offset} asked for {requested}, past a buffer of {length} bytes` |
+
+Worked example: the origin `falloutw.exe executable layer`, the field `u32`, the
+offset 42, 4 bytes wanted and 2 left render
+
+```
+falloutw.exe executable layer: u32 at byte 42 wanted 4 bytes but only 2 remain
+```
+
 ## The two layers are different facts, proved differently
 
 END-006 is the executable-layer witness. I read the four bytes for level 1 at

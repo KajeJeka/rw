@@ -123,6 +123,15 @@ const TOKEN_PAIR_COUNT: usize = BYTE_VALUE_COUNT * BYTE_VALUE_COUNT;
 /// Output positions walked when proving the ring mapping is a bijection.
 const RING_TURN: usize = RING_SLOT_COUNT;
 
+/// The output position a ring slot holds: the shift is `WRITE_START`, so the
+/// slot the write head starts at holds the position the head wrote a whole turn
+/// ago (LZSS-010).
+const RING_SHIFT_BACK: usize = RING_SLOT_COUNT - WRITE_START;
+
+/// The run the one turn sweep reads out of every slot: the shortest run a token
+/// can encode (LZSS-008).
+const TURN_PROBE_RUN: usize = SHORTEST_RUN;
+
 /// Ring size the original binary declares, per the guide and not measured
 /// (LZSS-C012, LZSS-004).
 const DECLARED_ORIGINAL_RING: usize = 4116;
@@ -253,12 +262,6 @@ const MAX_RUN_FIXTURE: usize = LONGEST_RUN;
 /// Ring slot both length fixtures read, inside the prefilled region.
 const LENGTH_FIXTURE_SLOT: usize = 6;
 
-/// Declared output of the shortest-match fixture.
-const MIN_RUN_DECLARED: usize = MIN_RUN_FIXTURE;
-
-/// Declared output of the longest-match fixture.
-const MAX_RUN_DECLARED: usize = MAX_RUN_FIXTURE;
-
 // --- the overlap fixture -------------------------------------------------------
 
 /// Literals in front of the overlap token. 96 is a whole number of control bytes
@@ -358,6 +361,13 @@ const MID_CONTROL_LITERALS: usize = 40;
 /// Declared output of the mid control byte fixtures.
 const MID_CONTROL_OUTPUT: usize = MID_CONTROL_LITERALS;
 
+/// Input bytes the mid control byte fixtures carry: forty literals behind five
+/// control bytes, and nothing else. It is the offset the input ran out at and
+/// the number of input bytes consumed, both of them counted here rather than
+/// read off the error.
+const MID_CONTROL_INPUT_BYTES: usize =
+    MID_CONTROL_LITERALS + MID_CONTROL_LITERALS / TOKENS_PER_CONTROL;
+
 /// Declared size one more than the literals the mid control byte stream carries.
 const SHORT_DECLARED: usize = MID_CONTROL_OUTPUT + 1;
 
@@ -376,6 +386,12 @@ const OVERRUN_TOKEN_DECLARED: usize = OVERRUN_TOKEN_LITERALS;
 
 /// Run length the overrun token asks for, larger than the zero room it has.
 const OVERRUN_TOKEN_RUN: usize = LZSS017_RUN;
+
+/// Input offset the overrun token starts at: the ninety six literals take
+/// ninety six bytes and twelve control bytes, the token's own control byte is
+/// the next one, and the token's first byte follows it.
+const OVERRUN_TOKEN_AT_OFFSET: usize =
+    OVERRUN_TOKEN_LITERALS + OVERRUN_TOKEN_LITERALS / TOKENS_PER_CONTROL + 1;
 
 /// Fill byte of the mid control byte fixtures.
 const MID_CONTROL_FILL: u8 = 0x33;
@@ -410,6 +426,16 @@ const MID_PAIR_FILL: u8 = 0x77;
 
 /// Input bytes left when the truncated pair starts.
 const MID_PAIR_REMAINING: usize = 1;
+
+/// Input offset the truncated pair starts at: the control byte is the first byte
+/// of the stream and the pair's own first byte is the second.
+const MID_PAIR_AT_OFFSET: usize = 1;
+
+/// Input offset the truncated pair starts at in the mid stream fixture: the
+/// forty literals take forty bytes and five control bytes, the trailing control
+/// byte is the next one, and the pair's first byte follows it.
+const MID_STREAM_PAIR_AT_OFFSET: usize =
+    MID_CONTROL_LITERALS + MID_CONTROL_LITERALS / TOKENS_PER_CONTROL + 1;
 
 // --- the canary ----------------------------------------------------------------
 
@@ -501,6 +527,35 @@ const BIT_FLIP_BITS: usize = BIT_FLIP_STREAM_BYTES * 8;
 /// Declared output of the bit flip stream.
 const BIT_FLIP_DECLARED: usize = OVERLAP_DECLARED;
 
+/// Input bytes of the bit flip stream that carry a literal value: the ninety
+/// six literals and the twelve control bytes in front of them.
+const BIT_FLIP_LITERAL_BYTES: usize = OVERLAP_LITERALS + OVERLAP_LITERALS / TOKENS_PER_CONTROL;
+
+/// Bits of the bit flip stream that fall on a literal byte. A literal carries
+/// no structure, so a flip in one changes an output byte and nothing else.
+const BIT_FLIP_LITERAL_BITS: usize = OVERLAP_LITERALS * 8;
+
+/// Ring slot the write head reaches after the declared output of the bit flip
+/// stream: `(114 + 4078) mod 4096` is 96 (LZSS-010).
+const BIT_FLIP_HEAD_SLOT: usize = 96;
+
+// --- the error wording ---------------------------------------------------------
+
+/// The input offset the unreachable `IndexOverflow` message names.
+///
+/// The three numbers below are this file's own: what is under test is the
+/// wording, because the public API cannot produce the variant at all
+/// (LZSS-024). The crate's `Display` renders what `docs/spec/lzss.md`
+/// "## Error text" fixes, and a message that printed nothing, dropped the
+/// offset or permuted the counts fails on the literal below.
+const INDEX_OVERFLOW_AT: usize = 7;
+
+/// The declared output size that message names.
+const INDEX_OVERFLOW_DECLARED_OUT: usize = 12;
+
+/// The produced count that message names.
+const INDEX_OVERFLOW_PRODUCED: usize = 5;
+
 // --- fixture builders ----------------------------------------------------------
 
 /// Folds `position` into `byte` so a literal run is **not** uniform.
@@ -568,6 +623,38 @@ fn expected_from(count: usize, byte: u8, source_position: usize) -> Vec<u8> {
     out
 }
 
+/// The bytes a back reference of `length` bytes from ring slot `source` must
+/// produce, when the ring holds `ring_byte` in every slot and the write head
+/// starts at [`WRITE_START`].
+///
+/// LZSS-003 fixes the write head at `RING_WRITE_START`, and every output byte
+/// moves it on by one slot. LZSS-011 fixes the read-before-write order: a run
+/// whose source trails the write head by less than its own length reads the
+/// bytes it has just written and repeats them, which is what the distance below
+/// decides.
+///
+/// A run whose source is the write head's own slot reads every slot before it
+/// is written, so it sees the ring's own byte in each of them.
+fn expected_ring_run<F>(source: usize, length: usize, ring_byte: F) -> Vec<u8>
+where
+    F: Fn(usize) -> u8,
+{
+    let distance = (WRITE_START + RING_SLOT_COUNT - source) % RING_SLOT_COUNT;
+    let mut out: Vec<u8> = Vec::new();
+    for step in 0..length {
+        let byte = if distance == 0 || step < distance {
+            // The slot still holds what the ring held before the run.
+            let slot = (source + step) % RING_SLOT_COUNT;
+            ring_byte(slot)
+        } else {
+            // The slot was written by this run, `distance` steps ago.
+            out[step - distance]
+        };
+        out.push(byte);
+    }
+    out
+}
+
 /// Appends one back reference token as `0x00 b1 b2`.
 fn with_token(mut stream: Vec<u8>, b1: u8, b2: u8) -> Vec<u8> {
     stream.push(0x00);
@@ -602,17 +689,30 @@ fn token_for(source: usize, length: usize) -> [u8; 3] {
 
 /// The ring slot an output position lives in: `(position + 4078) mod 4096`.
 ///
-/// The assertion inside is the point of the helper. Every call proves the slot
-/// it returns is inside the ring, so calling it once per produced length is a
-/// standing proof that no index above 4095 is ever touched (LZSS-012).
+/// This is the spec's mapping written out (LZSS-010). It is a helper and not a
+/// claim: the self-check that used to live here walked the mapping back to the
+/// position it came from, which says nothing about the decoder and can
+/// therefore not fail. The callers grade the helper against hand computed
+/// constants instead, and `synthetic_output_position_maps_to_ring_slot_position_plus_4078`
+/// grades the mapping itself against the decoder, one slot at a time.
 fn ring_index_of(position: usize) -> usize {
-    let slot = (position + WRITE_START) % RING_SLOT_COUNT;
-    assert_eq!(
-        slot,
-        slot % RING_SLOT_COUNT,
-        "synthetic: the ring slot is inside the ring"
-    );
-    slot
+    (position + WRITE_START) % RING_SLOT_COUNT
+}
+
+/// The output position the literal byte at a stream index names, or `None` when
+/// the byte at that index carries structure instead of a literal.
+///
+/// `literal_run` lays the stream out as one control byte followed by eight
+/// literals, twelve times over, and the three byte token follows. So below the
+/// token a byte is a literal exactly when its index is not a multiple of nine,
+/// and its output position is the index less the control bytes in front of it.
+fn literal_position_of(index: usize) -> Option<usize> {
+    let is_control = index.is_multiple_of(CONTROL_BYTE_WIDTH);
+    if index >= BIT_FLIP_LITERAL_BYTES || is_control {
+        None
+    } else {
+        Some(index - (index / CONTROL_BYTE_WIDTH) - 1)
+    }
 }
 
 /// Narrows a fixture value for a byte field.
@@ -1114,41 +1214,76 @@ fn synthetic_output_position_maps_to_ring_slot_position_plus_4078() {
     );
 
     // The wrap anchors, and the bijection over one whole turn.
+    let mut anchor_positions: Vec<usize> = Vec::with_capacity(RING_WRAP_ANCHOR_COUNT);
     for (position, slot) in RING_WRAP_ANCHORS {
         assert_eq!(
             ring_index_of(position),
             slot,
             "LZSS-010: the ring slot of this output position"
         );
+        anchor_positions.push(position);
     }
+    // The five anchors are five different positions, so the wrap is covered at
+    // five points and not at one of them five times. The count is of the
+    // positions, so two anchors naming the same one would fail here.
+    anchor_positions.sort_unstable();
+    anchor_positions.dedup();
     assert_eq!(
-        RING_WRAP_ANCHORS.len(),
+        anchor_positions.len(),
         RING_WRAP_ANCHOR_COUNT,
-        "every wrap anchor is present"
+        "the five wrap anchors are five different output positions"
     );
 
-    let mut covered = vec![false; RING_SLOT_COUNT];
-    let mut walked = 0usize;
-    for position in 0..RING_TURN {
-        let slot = ring_index_of(position);
-        assert_eq!(
-            slot,
-            slot % RING_SLOT_COUNT,
-            "LZSS-012: every slot stays inside the ring"
+    // The bijection over one whole turn, read back through the decoder. Every
+    // slot of the ring is named by a back reference of its own, in a stream that
+    // fills the ring with a whole turn of non-uniform literals first, so the
+    // bytes the decoder reads out of a slot say which output position that
+    // slot holds. A decoder that mapped the output positions onto the ring
+    // slots by any other shift answers with different bytes, and one that
+    // visited a slot twice answers with different bytes as well.
+    //
+    // One decode per slot, because a run writes into the ring as it reads out
+    // of it: a single stream could only read the slots its own runs had not
+    // reached yet.
+    let fill = 0x3Cu8;
+    let literals = literal_run(RING_TURN, fill);
+    // The byte each slot gave back, collected so the coverage claim is a
+    // comparison and not a tally of loop iterations: the sweep read the byte
+    // of every one of the 4096 positions of the turn, and the multiset of
+    // those bytes is the multiset the spec's fold gives.
+    let mut read_back: Vec<u8> = Vec::with_capacity(RING_TURN);
+    for slot in 0..RING_SLOT_COUNT {
+        let token = token_for(slot, TURN_PROBE_RUN);
+        let mut stream = literals.clone();
+        stream.push(token[0]);
+        stream.push(token[1]);
+        stream.push(token[2]);
+        let decoded = decoded_bytes(
+            decode_into(&stream, RING_TURN + TURN_PROBE_RUN),
+            "synthetic_output_position_maps_to_ring_slot_position_plus_4078: the slot",
         );
-        covered[slot] = true;
-        walked += 1;
+        assert_eq!(
+            decoded.len(),
+            RING_TURN + TURN_PROBE_RUN,
+            "LZSS-010: the probe produced the turn and the run it read"
+        );
+        assert_eq!(
+            decoded[RING_TURN..],
+            expected_ring_run(slot, TURN_PROBE_RUN, |read_slot| {
+                mix(fill, (read_slot + RING_SHIFT_BACK) % RING_SLOT_COUNT)
+            }),
+            "LZSS-010: the slot holds the output position the shift gives it"
+        );
+        read_back.push(decoded[RING_TURN]);
     }
-    assert_eq!(walked, RING_TURN, "one whole turn of the ring was walked");
-    let mut reached = 0usize;
-    for seen in &covered {
-        if *seen {
-            reached += 1;
-        }
-    }
+    let mut observed = read_back.clone();
+    observed.sort_unstable();
+    let mut expected: Vec<u8> = (0..RING_TURN).map(|position| mix(fill, position)).collect();
+    expected.sort_unstable();
     assert_eq!(
-        reached, RING_TURN,
-        "LZSS-010: one turn of output positions visits every ring slot exactly once"
+        observed, expected,
+        "LZSS-010: every slot of the ring was read back, and the bytes read are \
+         the bytes of the whole turn"
     );
 }
 
@@ -1156,36 +1291,36 @@ fn synthetic_output_position_maps_to_ring_slot_position_plus_4078() {
 /// oracle: class 5 (hand-computed vector from the spec: a bias of 0 gives 3 bytes and a bias of 0x0F gives 18)
 #[test]
 fn synthetic_match_length_range_is_exactly_three_to_eighteen() {
-    let shortest = token_for(LENGTH_FIXTURE_SLOT, MIN_RUN_FIXTURE);
-    let decoded = decoded_bytes(
-        decode_into(&shortest, MIN_RUN_DECLARED),
-        "synthetic_match_length_range_is_exactly_three_to_eighteen: 3",
-    );
+    // Every one of the sixteen biases the second byte of a back reference can
+    // carry, decoded on its own. LZSS-008 says the corpus requests lengths
+    // across the whole range and both ends are reachable, so the decoder's
+    // bias mapping is exercised at all sixteen points and not only at the two
+    // ends of the range.
+    let mut runs = 0usize;
+    for bias in 0..=LENGTH_BIAS {
+        let length = bias + SHORTEST_RUN;
+        let token = token_for(LENGTH_FIXTURE_SLOT, length);
+        let decoded = decoded_bytes(
+            decode_into(&token, length),
+            "synthetic_match_length_range_is_exactly_three_to_eighteen",
+        );
+        assert_eq!(
+            decoded.len(),
+            length,
+            "LZSS-008: the run length this bias encodes"
+        );
+        assert_eq!(
+            decoded,
+            vec![PREFILL_BYTE; length],
+            "LZSS-002: the slots the run reads are all in the prefilled region, \
+             so every byte is the prefill"
+        );
+        runs += 1;
+    }
     assert_eq!(
-        decoded.len(),
-        MIN_RUN_FIXTURE,
-        "LZSS-008: a bias of zero produces exactly MIN_MATCH bytes"
-    );
-    assert_eq!(
-        decoded,
-        vec![PREFILL_BYTE; MIN_RUN_FIXTURE],
-        "LZSS-002: slot 6 is in the prefilled region, so every byte is the prefill"
-    );
-
-    let longest = token_for(LENGTH_FIXTURE_SLOT, MAX_RUN_FIXTURE);
-    let decoded = decoded_bytes(
-        decode_into(&longest, MAX_RUN_DECLARED),
-        "synthetic_match_length_range_is_exactly_three_to_eighteen: 18",
-    );
-    assert_eq!(
-        decoded.len(),
-        MAX_RUN_FIXTURE,
-        "LZSS-008: a bias of 0x0F produces exactly MAX_MATCH bytes"
-    );
-    assert_eq!(
-        decoded,
-        vec![PREFILL_BYTE; MAX_RUN_FIXTURE],
-        "LZSS-002: slots 6 through 23 are all in the prefilled region"
+        runs,
+        LENGTH_BIAS + 1,
+        "every bias the second byte can carry was decoded"
     );
 
     assert_eq!(
@@ -1550,14 +1685,16 @@ fn synthetic_output_would_exceed_the_declared_size_is_an_error() {
     // The literals alone fill the declared size exactly, so the nine byte token
     // has nowhere to go. Whatever granularity the check uses, the failure is
     // detected at the declared size with nothing written past it.
-    match decode_error(
+    let overrun = decode_error(
         decode_into(&stream, OVERRUN_TOKEN_DECLARED),
         "synthetic_output_would_exceed_the_declared_size_is_an_error",
-    ) {
+    );
+    match overrun {
         LzssError::OutputOverrun {
             declared_out,
             produced,
-            ..
+            token_len,
+            at,
         } => {
             assert_eq!(
                 declared_out, OVERRUN_TOKEN_DECLARED,
@@ -1568,6 +1705,28 @@ fn synthetic_output_would_exceed_the_declared_size_is_an_error() {
                 "LZSS-014: the literals filled the declared size and the token \
                  wrote none of its nine bytes. LZSS-014 says do not write the \
                  token, not do not write its ninth byte."
+            );
+            assert_eq!(
+                at, OVERRUN_TOKEN_AT_OFFSET,
+                "LZSS-014: the error names the input offset the offending token \
+                 started at"
+            );
+            assert_eq!(
+                token_len, OVERRUN_TOKEN_RUN,
+                "LZSS-014: the error names the length the token would have written"
+            );
+            // `docs/spec/lzss.md` "## Error text" fixes the exact wording of
+            // this refusal, so the literal below is that wording: the message
+            // names the offset, the declared size and the produced count.
+            assert_eq!(
+                format!("{}", overrun),
+                format!(
+                    "fo1-lzss: the token at input offset {OVERRUN_TOKEN_AT_OFFSET} would \
+                     write {token_len} byte(s) past the declared output size \
+                     {declared_out} ({produced} produced)"
+                ),
+                "LZSS-014: the refusal names the offset, the declared size and the \
+                 produced count"
             );
         }
         other => panic!(
@@ -1616,14 +1775,16 @@ fn synthetic_input_ending_before_the_declared_size_is_an_error() {
         "LZSS-014: the exact stream decodes to its forty literals"
     );
 
-    match decode_error(
+    let short = decode_error(
         decode_into(&stream, SHORT_DECLARED),
         "synthetic_input_ending_before_the_declared_size_is_an_error",
-    ) {
+    );
+    match short {
         LzssError::OutputShort {
             declared_out,
             produced,
-            ..
+            at,
+            consumed,
         } => {
             assert_eq!(
                 declared_out, SHORT_DECLARED,
@@ -1633,6 +1794,26 @@ fn synthetic_input_ending_before_the_declared_size_is_an_error() {
                 produced, MID_CONTROL_OUTPUT,
                 "LZSS-014: forty bytes existed when the input ran out, and no \
                  byte was padded to reach the declared size"
+            );
+            assert_eq!(
+                at, MID_CONTROL_INPUT_BYTES,
+                "LZSS-014: the error names the input offset the input ran out at, \
+                 which is the end of the forty five input bytes"
+            );
+            assert_eq!(
+                consumed, MID_CONTROL_INPUT_BYTES,
+                "LZSS-014: the error names how many input bytes were consumed, and \
+                 the whole input was consumed"
+            );
+            // `docs/spec/lzss.md` "## Error text" fixes the exact wording of
+            // this refusal, so the literal below is that wording and not a
+            // description of it: a message that printed nothing, dropped the
+            // offset or permuted the counts fails here.
+            assert_eq!(
+                format!("{}", short),
+                "fo1-lzss: the input ran out at offset 45 with 40 of 41 declared \
+                 output bytes produced (45 input byte(s) consumed)",
+                "LZSS-014: the refusal renders the wording docs/spec/lzss.md fixes"
             );
         }
         other => panic!(
@@ -1703,15 +1884,16 @@ fn synthetic_mid_pair_back_reference_is_an_error_not_a_loop() {
     // built here and exists nowhere on disk. The original binary underflows its
     // length counter and loops in this state; the spec requires an error, and a
     // decoder that loops passes the entire corpus.
-    match decode_error(
+    let truncated = decode_error(
         decode_into(&MID_PAIR_AT_START, BOUNDARY_DECLARED),
         "synthetic_mid_pair_back_reference_is_an_error_not_a_loop: at the start",
-    ) {
+    );
+    match truncated {
         LzssError::TruncatedMatch {
             remaining_input,
             produced,
             declared_out,
-            ..
+            at,
         } => {
             assert_eq!(
                 remaining_input, MID_PAIR_REMAINING,
@@ -1725,6 +1907,26 @@ fn synthetic_mid_pair_back_reference_is_an_error_not_a_loop() {
                 declared_out, BOUNDARY_DECLARED,
                 "LZSS-015: the declared size travels with the error"
             );
+            assert_eq!(
+                at, MID_PAIR_AT_OFFSET,
+                "LZSS-015: the error names the input offset the pair started at"
+            );
+            // The crate's promise is that a failure is an `LzssError` carrying the
+            // byte offset and the lengths involved, never the bytes themselves.
+            // `docs/spec/lzss.md` "## Error text" fixes the exact wording of
+            // that refusal, so the literal below is that wording: a message
+            // that printed nothing, dropped the offset or the counts, or
+            // permuted them fails here.
+            assert_eq!(
+                format!("{}", truncated),
+                format!(
+                    "fo1-lzss: the back reference at input offset {MID_PAIR_AT_OFFSET} \
+                     started with {MID_PAIR_REMAINING} input byte(s) left and needs two \
+                     ({produced} of {declared_out} produced)"
+                ),
+                "LZSS-015: the refusal names the offset, the bytes left and the \
+                 counts the caller declared"
+            );
         }
         other => panic!(
             "synthetic: expected TruncatedMatch, got {}",
@@ -1737,14 +1939,16 @@ fn synthetic_mid_pair_back_reference_is_an_error_not_a_loop() {
     let mut stream = literal_run(MID_CONTROL_LITERALS, MID_PAIR_FILL);
     stream.push(MID_PAIR_TAIL[0]);
     stream.push(MID_PAIR_AT_START[1]);
-    match decode_error(
+    let truncated_mid_stream = decode_error(
         decode_into(&stream, MID_CONTROL_OUTPUT),
         "synthetic_mid_pair_back_reference_is_an_error_not_a_loop: mid stream",
-    ) {
+    );
+    match truncated_mid_stream {
         LzssError::TruncatedMatch {
             remaining_input,
             produced,
-            ..
+            declared_out,
+            at,
         } => {
             assert_eq!(
                 remaining_input, MID_PAIR_REMAINING,
@@ -1753,6 +1957,22 @@ fn synthetic_mid_pair_back_reference_is_an_error_not_a_loop() {
             assert_eq!(
                 produced, MID_CONTROL_OUTPUT,
                 "LZSS-015: forty literals decoded before the truncated pair"
+            );
+            assert_eq!(
+                at, MID_STREAM_PAIR_AT_OFFSET,
+                "LZSS-015: the error names the input offset the pair started at, \
+                 which is not the start of the stream"
+            );
+            assert_eq!(
+                format!("{}", truncated_mid_stream),
+                format!(
+                    "fo1-lzss: the back reference at input offset \
+                     {MID_STREAM_PAIR_AT_OFFSET} started with {MID_PAIR_REMAINING} \
+                     input byte(s) left and needs two ({produced} of {declared_out} \
+                     produced)"
+                ),
+                "LZSS-015: the refusal names the offset, the bytes left and the \
+                 counts the caller declared"
             );
         }
         other => panic!(
@@ -2023,7 +2243,7 @@ fn synthetic_reset_returns_a_fresh_ring() {
 
 // --- totality ------------------------------------------------------------------
 
-/// claim: LZSS-014, LZSS-013
+/// claim: LZSS-014, LZSS-013, LZSS-006
 /// oracle: class 6 (algebraic law: a total reader has no panic path, so every single bit flip answers)
 #[test]
 fn synthetic_every_bit_flip_answers_without_panicking() {
@@ -2055,12 +2275,42 @@ fn synthetic_every_bit_flip_answers_without_panicking() {
         "synthetic: the unflipped stream produces the declared size"
     );
 
-    let mut answered = 0usize;
-    let mut accepted = 0usize;
-    let mut refused = 0usize;
+    // The unflipped stream's output, computed from the spec's fold and from the
+    // read before write rule (LZSS-011): the ninety six literals, and then the
+    // run's six repetitions of the three bytes in front of the write head.
+    let head = expected_from(OVERLAP_DISTANCE, CANARY_FILL, OVERLAP_SEED_POSITION);
+    let mut want = expected_literals(OVERLAP_LITERALS, CANARY_FILL);
+    for _ in 0..OVERLAP_REPEATS {
+        want.extend_from_slice(&head);
+    }
+    assert_eq!(
+        want.len(),
+        BIT_FLIP_DECLARED,
+        "synthetic: the literals and the run are the whole output"
+    );
+
+    // The counter below counts what the decoder answered, not how many times
+    // the loop ran: a flip that changed a literal byte has to decode to the
+    // exact bytes the spec gives, and the tally is only allowed to reach its
+    // hand computed value if every one of those flips was accepted.
+    let mut literal_flips_accepted = 0usize;
+    let mut mutations: Vec<Vec<u8>> = Vec::with_capacity(BIT_FLIP_BITS);
     for bit in 0..BIT_FLIP_BITS {
         let mut mutated = stream.clone();
         mutated[bit / 8] ^= 1u8 << (bit % 8);
+        // The corpus is a corpus of single bit flips: one bit differs from the
+        // original and the other 887 do not. A flip applied twice, or to the
+        // wrong place, fails here.
+        let mut differing = 0u32;
+        for index in 0..stream.len() {
+            differing += (stream[index] ^ mutated[index]).count_ones();
+        }
+        assert_eq!(
+            differing, 1,
+            "synthetic: the mutation at bit {bit} flips exactly one bit of the stream"
+        );
+        mutations.push(mutated.clone());
+
         match decode_into(&mutated, BIT_FLIP_DECLARED) {
             Ok(bytes) => {
                 assert_eq!(
@@ -2069,12 +2319,42 @@ fn synthetic_every_bit_flip_answers_without_panicking() {
                     "LZSS-014: a decode that returns Ok reaches the declared size \
                      exactly, so nothing was padded or truncated"
                 );
+                // LZSS-010: the produced length places the write head at the
+                // slot the spec's shift gives, and that slot is inside the
+                // ring.
                 assert_eq!(
                     ring_index_of(bytes.len()),
-                    ring_index_of(BIT_FLIP_DECLARED),
-                    "LZSS-012: the write head for this length is inside the ring"
+                    BIT_FLIP_HEAD_SLOT,
+                    "LZSS-010: the write head after the declared output is ring \
+                     slot 96, which is inside the ring"
                 );
-                accepted += 1;
+                // A flip in a literal byte changes one output byte and nothing
+                // else, so the whole output is known before the decoder runs:
+                // the literal itself, and, for the three bytes the run reads,
+                // the six places the run repeats them in.
+                if let Some(position) = literal_position_of(bit / 8) {
+                    let mask = 1u8 << (bit % 8);
+                    let mut expected = want.clone();
+                    expected[position] ^= mask;
+                    if position >= OVERLAP_SEED_POSITION {
+                        for repeat in 0..OVERLAP_REPEATS {
+                            let index = OVERLAP_LITERALS
+                                + repeat * OVERLAP_DISTANCE
+                                + (position - OVERLAP_SEED_POSITION);
+                            expected[index] ^= mask;
+                        }
+                    }
+                    // LZSS-006: a set bit is a literal. The expectation above is
+                    // the spec's fold: one input byte per set control bit,
+                    // written to the output and to the ring at the write index,
+                    // which advances by one and wraps at RING_SIZE.
+                    assert_eq!(
+                        bytes, expected,
+                        "LZSS-006: the flip at bit {bit} changes the one byte it \
+                         names and nothing else"
+                    );
+                    literal_flips_accepted += 1;
+                }
             }
             Err(error) => {
                 assert!(
@@ -2083,24 +2363,27 @@ fn synthetic_every_bit_flip_answers_without_panicking() {
                      the three failures the spec prescribes",
                     lzss_error_name(&error)
                 );
-                refused += 1;
             }
         }
-        answered += 1;
     }
+    // 96 literal bytes carry 768 bits, and a literal carries no structure, so
+    // every one of those flips still decodes to the declared size. The count
+    // only moves on the accepted path, so a decoder that refused one of them
+    // fails here instead of passing on a tally.
     assert_eq!(
-        answered, BIT_FLIP_BITS,
-        "every single bit flip answered with a value and not a panic"
+        literal_flips_accepted, BIT_FLIP_LITERAL_BITS,
+        "every flip that only changed a literal byte decoded to the bytes the \
+         spec's fold gives"
     );
+    // Every flip produced its own stream: a mutation index that named the
+    // same bit twice would collapse two of them into one.
+    let mut distinct = mutations.clone();
+    distinct.sort_unstable();
+    distinct.dedup();
     assert_eq!(
-        accepted + refused,
+        distinct.len(),
         BIT_FLIP_BITS,
-        "every single bit flip was either accepted or refused"
-    );
-    assert_eq!(
-        accepted,
-        BIT_FLIP_BITS - refused,
-        "the accepted count and the refused count account for every bit"
+        "every single bit flip produced its own stream"
     );
 }
 
@@ -2108,48 +2391,79 @@ fn synthetic_every_bit_flip_answers_without_panicking() {
 /// oracle: class 6 (algebraic law: every token pair addresses a slot inside the ring, and the largest is 4095)
 #[test]
 fn synthetic_no_ring_index_above_4095_is_addressable() {
-    // Algebraic, not observed: `b1` contributes at most `0xFF` and the high
-    // nibble at most `0xF00`, so the source is at most `0xFFF` for every one of
-    // the 65,536 byte pairs a stream can present.
-    let mut highest = 0usize;
-    let mut pairs = 0usize;
+    // Every one of the 65,536 byte pairs a stream can present is driven through
+    // the decoder itself. The decoder is told the run length the pair encodes
+    // and nothing else, so a decoder that read the source out of the pair
+    // wrongly, or the length out of the pair wrongly, or reached a slot above
+    // 4095, answers with different bytes or a different length here. The
+    // expectations come from the spec's ring rules, not from a copy of the
+    // decoder's own expression: `b1` contributes at most `0xFF` and the high
+    // nibble at most `0xF00`, so the source is at most `0xFFF` (LZSS-012), and
+    // the low nibble is the run's bias (LZSS-008).
+    // Every pair is driven through the decoder, and the pairs that refuse are
+    // collected rather than counted: the tally below is the number of pairs
+    // that decoded, so a pair the decoder refused shows up as a short count
+    // and names itself.
+    let mut decoded_pairs = 0usize;
+    let mut refusals: Vec<String> = Vec::new();
     let mut shortest = LONGEST_RUN;
     let mut longest = 0usize;
     for b1 in 0..BYTE_VALUE_COUNT {
         for b2 in 0..BYTE_VALUE_COUNT {
-            let source = b1 | ((b2 & 0xF0) << 4);
-            let length = (b2 & 0x0F) + SHORTEST_RUN;
-            assert_eq!(
-                source,
-                source % RING_SLOT_COUNT,
-                "LZSS-012: the source index of this token pair is inside the ring"
-            );
-            assert_eq!(
-                length,
-                (b2 & 0x0F) + SHORTEST_RUN,
-                "LZSS-008: the length of this token pair"
-            );
-            if source > highest {
-                highest = source;
+            let case_name = format!("pair {b1:02X} {b2:02X}");
+            let b1_byte = to_u8(b1);
+            let b2_byte = to_u8(b2);
+            let source = usize::from(b1_byte) | ((usize::from(b2_byte) & POSITION_HIGH_MASK) << 4);
+            let length = (usize::from(b2_byte) & LENGTH_BIAS) + SHORTEST_RUN;
+            // The pair as the decoder sees it: a control byte whose first bit is
+            // clear, so the first token is a back reference, and the pair behind
+            // it. Nothing else is in the stream, so the block ends when the pair
+            // is used up (LZSS-013).
+            let pair_stream = [0x00u8, b1_byte, b2_byte];
+            match decode_into(&pair_stream, length) {
+                Ok(decoded) => {
+                    assert_eq!(
+                        decoded.len(),
+                        length,
+                        "{case_name}: LZSS-008: the run length the pair's bias encodes"
+                    );
+                    assert_eq!(
+                        decoded,
+                        expected_ring_run(source, length, |slot| match slot {
+                            0..=PREFILLED_LAST_SLOT => PREFILL_BYTE,
+                            _ => ZERO_BYTE,
+                        }),
+                        "{case_name}: LZSS-012: the bytes the pair's source names, read out \
+                         of a fresh ring"
+                    );
+                    if decoded.len() < shortest {
+                        shortest = decoded.len();
+                    }
+                    if decoded.len() > longest {
+                        longest = decoded.len();
+                    }
+                    decoded_pairs += 1;
+                }
+                Err(error) => refusals.push(format!("{}: {}", case_name, lzss_error_name(&error))),
             }
-            if length < shortest {
-                shortest = length;
-            }
-            if length > longest {
-                longest = length;
-            }
-            pairs += 1;
         }
     }
-    assert_eq!(pairs, TOKEN_PAIR_COUNT, "every token pair was walked");
+    // 256 times 256 pairs, and every one of them decoded. The crate keeps an
+    // `IndexOverflow` variant for the ring arithmetic its constants cannot
+    // reach (LZSS-024), and this sweep is the evidence that the public API
+    // never produces it: a pair that reported it would be in the refusals and
+    // would make this count short.
     assert_eq!(
-        highest, LARGEST_SOURCE,
-        "LZSS-012: the pair FF F0 reaches 4095"
+        decoded_pairs, TOKEN_PAIR_COUNT,
+        "LZSS-012: every token pair must decode, and these did not: {refusals:?}"
     );
-    assert_eq!(shortest, MIN_MATCH, "LZSS-008: a bias of 0 gives MIN_MATCH");
+    assert_eq!(
+        shortest, MIN_MATCH,
+        "LZSS-008: the shortest run the decoder produced over the whole pair space"
+    );
     assert_eq!(
         longest, MAX_MATCH,
-        "LZSS-008: a bias of 0x0F gives MAX_MATCH"
+        "LZSS-008: the longest run the decoder produced over the whole pair space"
     );
 
     // Observable: the top of the addressable range is addressable, and the
@@ -2188,5 +2502,31 @@ fn synthetic_no_ring_index_above_4095_is_addressable() {
         UNREACHABLE_SLOTS,
         "LZSS-C013: the original declares 4116 bytes and this spec allocates 4096, \
          so 20 slots were unreachable"
+    );
+
+    // LZSS-024: the crate keeps an `IndexOverflow` variant for the ring
+    // arithmetic its own constants cannot reach, and the public API cannot
+    // produce it. The reason is the bound above: a pair names a source of at
+    // most 4095 and the ring has 4096 slots, so no ring read can miss; the
+    // write head starts at 4078 and only moves forward, wrapping at 4096
+    // (LZSS-001, LZSS-003); and a run is at most 18 bytes long (LZSS-008). The
+    // sweep over all 65,536 pairs above is the runtime evidence: not one of
+    // them produced an error.
+    //
+    // The wording is still the crate's own and `docs/spec/lzss.md` "## Error
+    // text" fixes it, so it is graded here on a value built from the constants
+    // in this file. The numbers are this fixture's own; the sentence is what
+    // the spec fixes, and a message that printed nothing, dropped the offset
+    // or permuted the counts fails on the literal below.
+    let overflow = LzssError::IndexOverflow {
+        at: INDEX_OVERFLOW_AT,
+        declared_out: INDEX_OVERFLOW_DECLARED_OUT,
+        produced: INDEX_OVERFLOW_PRODUCED,
+    };
+    assert_eq!(
+        format!("{}", overflow),
+        "fo1-lzss: ring arithmetic overflowed at input offset 7 (5 of 12 produced)",
+        "LZSS-024: the wording of the variant the public API cannot produce is \
+         the wording docs/spec/lzss.md fixes"
     );
 }

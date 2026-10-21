@@ -170,6 +170,32 @@ const SYNTHETIC_I32_MIN_ASSET_BYTES: [u8; WIDTH_U32] = [0x80, 0x00, 0x00, 0x00];
 /// lowest bit is the sign bit and it is read last.
 const SYNTHETIC_I32_MIN_HOST_BYTES: [u8; WIDTH_U32] = [0x00, 0x00, 0x00, 0x80];
 
+// --- the vectors the per-reader tests fold ------------------------------------
+
+/// One byte, one short of what a two byte read asks for (END-017).
+///
+/// The length is written as `WIDTH_U16 - 1` and not as a literal, so the
+/// fixture cannot drift away from the width it is short of.
+const SYNTHETIC_ONE_BYTE_SHORT: [u8; WIDTH_U16 - 1] = [0x12];
+
+/// Three bytes, one short of what a four byte read asks for (END-017).
+const SYNTHETIC_THREE_BYTES_SHORT: [u8; WIDTH_U32 - 1] = [0x12, 0x34, 0x56];
+
+/// Two bytes whose two's complement value is neither zero, one nor minus one:
+/// `FF FE`.
+///
+/// Most significant byte first the pair is `0xFFFE`, which is -2 as an `i16`;
+/// least significant byte first it is `0xFEFF`, which is -257. The two layers
+/// therefore answer with two different numbers, and neither answer is a
+/// constant a reader could return instead of folding (END-016).
+const SYNTHETIC_SIGNED_PAIR: [u8; WIDTH_U16] = [0xFF, 0xFE];
+
+/// `FF FE` read most significant byte first is -2 as an `i16`.
+const SYNTHETIC_SIGNED_PAIR_ASSET: i16 = -2;
+
+/// `FF FE` read least significant byte first is -257 as an `i16`.
+const SYNTHETIC_SIGNED_PAIR_HOST: i16 = -257;
+
 // --- the mixed-read buffer ----------------------------------------------------
 
 /// Sixteen bytes, long enough for every read the width test performs and for the
@@ -513,6 +539,14 @@ const SYNTHETIC_CANARY_LEN: usize = 8;
 /// [`SYNTHETIC_CANARY`], so a whole `u32` is short.
 const CANARY_CURSOR: usize = SYNTHETIC_CANARY_LEN - WIDTH_U8;
 
+/// Bytes still left at [`CANARY_CURSOR`], which is the count the canary's failed
+/// `u32` reports as available.
+const CANARY_AVAILABLE: usize = SYNTHETIC_CANARY_LEN - CANARY_CURSOR;
+
+/// The cursor a fresh reader reports when a `seek` is refused: nothing has been
+/// read yet, so the cursor is still at the start of the buffer.
+const SEEK_ERROR_OFFSET: usize = 0;
+
 /// The canary as the text an error message would have to contain to leak it.
 const SYNTHETIC_CANARY_TEXT: &str = "CANARYXX";
 
@@ -618,7 +652,7 @@ fn reader_error_is_display<T: std::fmt::Display + std::error::Error>() {}
 
 /// Name of an asset-layer variant, matched exhaustively with no wildcard arm, so
 /// a third variant is a compile error here rather than a value that slips past a
-/// name check (END-021).
+/// name check (the closed set of `END-C012`).
 fn big_endian_error_name(error: &BigEndianError) -> &'static str {
     match error {
         BigEndianError::Truncated { .. } => "Truncated",
@@ -626,11 +660,36 @@ fn big_endian_error_name(error: &BigEndianError) -> &'static str {
     }
 }
 
-/// Name of an executable-layer variant, exhaustively (END-021).
+/// Name of an executable-layer variant, exhaustively (the closed set of
+/// `END-C012`).
 fn little_endian_error_name(error: &LittleEndianError) -> &'static str {
     match error {
         LittleEndianError::Truncated { .. } => "Truncated",
         LittleEndianError::SeekOutOfRange { .. } => "SeekOutOfRange",
+    }
+}
+
+/// The index an asset-layer variant has in its error type: one for `Truncated`
+/// and two for `SeekOutOfRange`.
+///
+/// The match is exhaustive with no wildcard arm, so a third variant has no arm
+/// and breaks the build, and each arm carries its own variant's index. The
+/// highest index the type can produce is therefore the number of variants the
+/// type has, so the ledger's `END-C012` count is compared against the crate's
+/// own error type and not against a list this file made up.
+fn big_endian_variant_index(error: &BigEndianError) -> usize {
+    match error {
+        BigEndianError::Truncated { .. } => 1,
+        BigEndianError::SeekOutOfRange { .. } => 2,
+    }
+}
+
+/// The index an executable-layer variant has in its error type (the closed set
+/// of `END-C012`).
+fn little_endian_variant_index(error: &LittleEndianError) -> usize {
+    match error {
+        LittleEndianError::Truncated { .. } => 1,
+        LittleEndianError::SeekOutOfRange { .. } => 2,
     }
 }
 
@@ -1268,8 +1327,8 @@ fn synthetic_every_read_method_refuses_an_empty_buffer() {
         "every read method refused the empty buffer in the executable layer too"
     );
 
-    // The variant is matched, not merely counted, and there are exactly two
-    // variants in the closed set (END-021).
+    // The variant is matched, not merely counted, and the closed set of
+    // `END-C012` has exactly two variants a piece.
     let mut reader = BigEndian::new(&buffer, SYNTHETIC_ASSET_ORIGIN);
     let error = match asset_read(&mut reader, ReadMethod::U8, WIDTH_U8) {
         Ok(()) => panic!("an empty buffer must not yield a byte"),
@@ -1852,15 +1911,25 @@ fn synthetic_no_default_order_and_no_conversion_between_the_layers() {
     reader_error_is_display::<BigEndianError>();
     reader_error_is_display::<LittleEndianError>();
 
-    // The closed error set is two variants a piece, matched exhaustively by the
-    // name helpers this file calls below (END-021). Both readers are pushed
-    // past their end so both variants of both types are seen.
+    // The two variants of each layer's error type, in the order the spec lists
+    // them, named by the exhaustive matches in the helpers this file calls
+    // (END-024: the two error types are two types, and each carries its own two
+    // variants). The closed set of `END-C012` is proved when the file compiles:
+    // a third variant has no arm in either helper and breaks the build, which
+    // is the rule `docs/spec/trace.md` records as a claim no test maps. Both
+    // readers are pushed past their end so both variants of both types are seen
+    // here.
     let mut asset_past_end = BigEndian::new(&SYNTHETIC_FOLD_BYTES, SYNTHETIC_ASSET_ORIGIN);
     asset_past_end
         .seek(WIDTH_U32)
         .expect("the cursor is parked at the end first");
     let asset_truncation = match asset_past_end.u32() {
         Ok(_) => panic!("a four byte buffer must not yield a u32 at its own end"),
+        Err(error) => error,
+    };
+    let mut asset_seeker = BigEndian::new(&SYNTHETIC_CURSOR_BYTES, SYNTHETIC_ASSET_ORIGIN);
+    let asset_seek = match asset_seeker.seek(SEEK_REJECTED_FIRST) {
+        Ok(()) => panic!("a seek past the end of the buffer must be refused"),
         Err(error) => error,
     };
     let mut host_past_end = LittleEndian::new(&SYNTHETIC_FOLD_BYTES, SYNTHETIC_HOST_ORIGIN);
@@ -1871,18 +1940,59 @@ fn synthetic_no_default_order_and_no_conversion_between_the_layers() {
         Ok(_) => panic!("a four byte buffer must not yield a host u32 at its own end"),
         Err(error) => error,
     };
-    let asset_names = [big_endian_error_name(&asset_truncation)];
-    let host_names = [little_endian_error_name(&host_truncation)];
-    assert_eq!(asset_names.len(), 1, "one asset error was produced");
-    assert_eq!(host_names.len(), 1, "one host error was produced");
+    let mut host_seeker = LittleEndian::new(&SYNTHETIC_CURSOR_BYTES, SYNTHETIC_HOST_ORIGIN);
+    let host_seek = match host_seeker.seek(SEEK_REJECTED_FIRST) {
+        Ok(()) => panic!("a host seek past the end of the buffer must be refused"),
+        Err(error) => error,
+    };
+
+    // The names are compared as a set, so a variant that was renamed or a
+    // failure that answered with the other variant fails here.
+    let asset_names = [
+        big_endian_error_name(&asset_truncation),
+        big_endian_error_name(&asset_seek),
+    ];
+    let host_names = [
+        little_endian_error_name(&host_truncation),
+        little_endian_error_name(&host_seek),
+    ];
     assert_eq!(
-        asset_names[0], "Truncated",
-        "the asset error is a truncation"
+        asset_names,
+        ["Truncated", "SeekOutOfRange"],
+        "the asset layer's two refusals are the truncation and the refused seek"
     );
-    assert_eq!(host_names[0], "Truncated", "the host error is a truncation");
     assert_eq!(
-        ERROR_VARIANT_COUNT, 2,
-        "the closed set is Truncated and SeekOutOfRange"
+        host_names,
+        ["Truncated", "SeekOutOfRange"],
+        "the executable layer's two refusals are the truncation and the refused seek"
+    );
+
+    // Both layers name the same two variants and no third, and the ledger's
+    // count of the variants in a crate's closed set is that number.
+    let mut distinct: Vec<&str> = asset_names.to_vec();
+    distinct.extend_from_slice(&host_names);
+    distinct.sort_unstable();
+    distinct.dedup();
+    assert_eq!(
+        distinct,
+        ["SeekOutOfRange", "Truncated"],
+        "the two layers name the same two variants and no third"
+    );
+    // The ledger's count is compared against the crates' own error types. The
+    // count is the highest index the exhaustive matches above can produce, and
+    // a variant that the type gained would have no arm and would break the
+    // build, so the number cannot drift away from the code in silence.
+    assert_eq!(
+        big_endian_variant_index(&asset_seek).max(big_endian_variant_index(&asset_truncation)),
+        ERROR_VARIANT_COUNT,
+        "the ledger's variant count is the number of variants the asset layer's \
+         error type has"
+    );
+    assert_eq!(
+        little_endian_variant_index(&host_seek).max(little_endian_variant_index(&host_truncation)),
+        ERROR_VARIANT_COUNT,
+        "the ledger's variant count is the number of variants the executable \
+         layer's error type has"
     );
 }
 
@@ -1907,15 +2017,31 @@ fn synthetic_every_bit_flip_of_the_asset_layer_answers() {
         // Each read gets its own cursor. Four bytes cannot be read twice from one
         // cursor, and a reader that consumed two bytes before the `u32` would be
         // answering a different question than the one this test asks.
+        //
+        // Every one of the three reads that fit is asserted to answer `Ok`
+        // before it is counted, so the counter counts answers rather than
+        // attempts. A reader that refused every flipped buffer would fail here
+        // instead of passing on a tally.
         let mut word_reader = BigEndian::new(&flipped, SYNTHETIC_ASSET_ORIGIN);
-        let _ = word_reader.u16().map(|_| ());
+        assert!(
+            word_reader.u16().is_ok(),
+            "{case_name}: the u16 read still answers Ok on a four byte buffer"
+        );
+        succeeded += 1;
         let mut long_reader = BigEndian::new(&flipped, SYNTHETIC_ASSET_ORIGIN);
-        let _ = long_reader.u32().map(|_| ());
+        assert!(
+            long_reader.u32().is_ok(),
+            "{case_name}: the u32 read still answers Ok on a four byte buffer"
+        );
+        succeeded += 1;
         let mut block_reader = BigEndian::new(&flipped, SYNTHETIC_ASSET_ORIGIN);
-        let _ = block_reader.bytes(WIDTH_U32).map(|_| ());
+        assert!(
+            block_reader.bytes(WIDTH_U32).is_ok(),
+            "{case_name}: the four byte borrow still answers Ok"
+        );
+        succeeded += 1;
         let mut over_reader = BigEndian::new(&flipped, SYNTHETIC_ASSET_ORIGIN);
         let over_long = over_reader.bytes(FLIP_TOO_LONG);
-        succeeded += 3;
         let (offset, field, origin, needed, available) =
             big_endian_truncated(over_long.map(|_| ()), &case_name);
         assert_eq!(
@@ -1966,15 +2092,29 @@ fn synthetic_every_bit_flip_of_the_executable_layer_answers() {
         *target ^= mask;
 
         // Each read gets its own cursor, for the same reason as in the asset layer.
+        //
+        // The three reads that fit are asserted to answer `Ok` before they are
+        // counted, so the counter counts answers rather than attempts.
         let mut word_reader = LittleEndian::new(&flipped, SYNTHETIC_HOST_ORIGIN);
-        let _ = word_reader.u16().map(|_| ());
+        assert!(
+            word_reader.u16().is_ok(),
+            "{case_name}: the u16 read still answers Ok on a four byte buffer"
+        );
+        succeeded += 1;
         let mut long_reader = LittleEndian::new(&flipped, SYNTHETIC_HOST_ORIGIN);
-        let _ = long_reader.u32().map(|_| ());
+        assert!(
+            long_reader.u32().is_ok(),
+            "{case_name}: the u32 read still answers Ok on a four byte buffer"
+        );
+        succeeded += 1;
         let mut block_reader = LittleEndian::new(&flipped, SYNTHETIC_HOST_ORIGIN);
-        let _ = block_reader.bytes(WIDTH_U32).map(|_| ());
+        assert!(
+            block_reader.bytes(WIDTH_U32).is_ok(),
+            "{case_name}: the four byte borrow still answers Ok"
+        );
+        succeeded += 1;
         let mut over_reader = LittleEndian::new(&flipped, SYNTHETIC_HOST_ORIGIN);
         let over_long = over_reader.bytes(FLIP_TOO_LONG);
-        succeeded += 3;
         let (offset, field, origin, needed, available) =
             little_endian_truncated(over_long.map(|_| ()), &case_name);
         assert_eq!(
@@ -2007,7 +2147,7 @@ fn synthetic_every_bit_flip_of_the_executable_layer_answers() {
 }
 
 /// claim: END-022, END-023
-/// oracle: class 5 (hand computed vectors from the spec: a failed read reports where it began, which operation, and whose buffer)
+/// oracle: class 5 (hand computed vectors from the spec: a failed read reports where it began, which operation, and whose buffer; the rendered message is the wording docs/spec/endian.md "## Error text" fixes)
 #[test]
 fn synthetic_every_error_names_its_offset_its_field_its_origin_and_no_content() {
     let buffer = synthetic_filler(ERROR_BUFFER_LEN);
@@ -2142,6 +2282,83 @@ fn synthetic_every_error_names_its_offset_its_field_its_origin_and_no_content() 
         !rendered.is_empty(),
         "but it is not empty either: it has to say something"
     );
+
+    // END-022: the message carries the offset the operation started at, the
+    // label of the operation, the origin the reader was given and the two counts
+    // the bounds check compared. `docs/spec/endian.md` "## Error text" fixes
+    // the exact wording of that refusal, so the literal below is that wording:
+    // a message that printed nothing, dropped a count or permuted the fields
+    // fails here, and the numbers in it are the ones the failure reported.
+    assert_eq!(
+        rendered,
+        format!(
+            "{SYNTHETIC_ASSET_ORIGIN}: {FIELD_U32} at byte {CANARY_CURSOR} wanted \
+             {WIDTH_U32} bytes but only {CANARY_AVAILABLE} remain"
+        ),
+        "END-022: the asset layer's refusal names where it stopped, what it wanted \
+         and what was left"
+    );
+
+    // The executable layer's own error, rendered the same way. The two crates
+    // are deliberate duplicates (END-011), so a `Display` that printed nothing
+    // in one of them is a real defect, and the asset layer's message is not the
+    // executable layer's message.
+    let mut host_canary_reader = LittleEndian::new(canary_buffer, SYNTHETIC_HOST_ORIGIN);
+    host_canary_reader
+        .seek(CANARY_CURSOR)
+        .expect("the host canary cursor is inside the buffer");
+    let host_canary_error = match host_canary_reader.u32() {
+        Ok(_) => panic!("an eight byte buffer must not yield a host u32 from its last byte"),
+        Err(error) => error,
+    };
+    let host_rendered = format!("{}", host_canary_error);
+    assert!(
+        !host_rendered.contains(SYNTHETIC_CANARY_TEXT),
+        "the executable layer's error text must not carry file content either"
+    );
+    assert_eq!(
+        host_rendered,
+        format!(
+            "{SYNTHETIC_HOST_ORIGIN}: {FIELD_U32} at byte {CANARY_CURSOR} wanted \
+             {WIDTH_U32} bytes but only {CANARY_AVAILABLE} remain"
+        ),
+        "END-022: the executable layer's refusal names where it stopped, what it \
+         wanted and what was left"
+    );
+
+    // The other variant of the closed set, in both layers: a `seek` past the end
+    // of the buffer. It carries the cursor it was at, the position it asked for
+    // and the length of the buffer it was refused against.
+    let mut asset_seeker = BigEndian::new(&SYNTHETIC_CURSOR_BYTES, SYNTHETIC_ASSET_ORIGIN);
+    let asset_seek_error = match asset_seeker.seek(SEEK_REJECTED_FIRST) {
+        Ok(()) => panic!("a seek past the end of the buffer must be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        format!("{}", asset_seek_error),
+        format!(
+            "{SYNTHETIC_ASSET_ORIGIN}: {FIELD_SEEK} from byte {SEEK_ERROR_OFFSET} asked \
+             for {SEEK_REJECTED_FIRST}, past a buffer of {CURSOR_LEN} bytes"
+        ),
+        "END-022: the asset layer's refused seek names where it was, what it asked \
+         for and how long the buffer is"
+    );
+
+    let mut host_seeker = LittleEndian::new(&SYNTHETIC_CURSOR_BYTES, SYNTHETIC_HOST_ORIGIN);
+    let host_seek_error = match host_seeker.seek(SEEK_REJECTED_FIRST) {
+        Ok(()) => panic!("a host seek past the end of the buffer must be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        format!("{}", host_seek_error),
+        format!(
+            "{SYNTHETIC_HOST_ORIGIN}: {FIELD_SEEK} from byte {SEEK_ERROR_OFFSET} asked \
+             for {SEEK_REJECTED_FIRST}, past a buffer of {CURSOR_LEN} bytes"
+        ),
+        "END-022: the executable layer's refused seek names where it was, what it \
+         asked for and how long the buffer is"
+    );
+
     reader_error_is_static_and_copy::<BigEndianError>();
     reader_error_is_static_and_copy::<LittleEndianError>();
 }
@@ -2239,7 +2456,7 @@ fn synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers() {
         "and the header is exactly consumed"
     );
 
-    let mut host_header = LittleEndian::new(&header, SYNTHETIC_ASSET_ORIGIN);
+    let mut host_header = LittleEndian::new(&header, SYNTHETIC_HOST_ORIGIN);
     let wrong_order = host_header
         .u32()
         .expect("the executable layer reads the word");
@@ -2250,5 +2467,253 @@ fn synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers() {
     assert_ne!(
         wrong_order, SYNTHETIC_DIRECTORY_COUNT,
         "so the magnitude is what establishes the order, not an absence of error"
+    );
+}
+
+// --- one test per inherent integer reader ------------------------------------
+//
+// The two tests above prove the fold of a whole buffer and the two below it
+// prove that a signed read reinterprets. Between them, one reader is proved by
+// one assertion in a test that also proves four other things, so a failure
+// names a fold rather than a reader, and the refusal of each reader is proved
+// by the table driven tests, which discard the value on purpose.
+//
+// The six tests below close that: each names one reader, pins its exact value
+// against a literal the spec states, and pairs it with the same reader's
+// refusal of a buffer one byte short. `BigEndian::u16`, `BigEndian::i16`,
+// `LittleEndian::u16`, `LittleEndian::u32` and `LittleEndian::i16` have no
+// production caller anywhere in the workspace, so these six tests are the whole
+// proof for them and not a second line of defence.
+
+/// claim: END-015, END-014, END-017, END-018, END-022
+/// oracle: class 5 (hand computed vectors from the spec: `12 34` folds most significant byte first to 0x1234; a one byte buffer is refused)
+#[test]
+fn synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first() {
+    let mut reader = BigEndian::new(&SYNTHETIC_FOLD_BYTES, SYNTHETIC_ASSET_ORIGIN);
+    let value = reader.u16().expect("the asset layer reads two bytes");
+    assert_eq!(
+        value, SYNTHETIC_U16_ASSET,
+        "the asset layer folds 12 34 as 0x1234"
+    );
+    assert_eq!(
+        value, 4_660,
+        "the same value written out, so a wrong constant in the ledger fails"
+    );
+    assert_eq!(reader.offset(), WIDTH_U16, "one u16 consumed two bytes");
+
+    // The good-input twin: the same reader, one byte short of the width it
+    // wants. The refusal names the operation, the origin and the two counts,
+    // and it leaves the cursor where it was.
+    let mut short = BigEndian::new(&SYNTHETIC_ONE_BYTE_SHORT, SYNTHETIC_ASSET_ORIGIN);
+    let (offset, field, origin, needed, available) =
+        big_endian_truncated(short.u16().map(|_| ()), "asset u16 from one byte");
+    assert_eq!(offset, 0, "the refused read started at byte 0");
+    assert_eq!(field, FIELD_U16, "the refusal names the u16 field");
+    assert_eq!(
+        origin, SYNTHETIC_ASSET_ORIGIN,
+        "the refusal names the origin"
+    );
+    assert_eq!(needed, WIDTH_U16, "the refusal says two bytes were wanted");
+    assert_eq!(available, WIDTH_U8, "the refusal says one byte was left");
+    assert_eq!(
+        short.offset(),
+        0,
+        "and a refused read leaves the cursor where it was"
+    );
+}
+
+/// claim: END-015, END-014, END-017, END-018, END-022
+/// oracle: class 5 (hand computed vectors from the spec: `12 34` folds least significant byte first to 0x3412; a one byte buffer is refused)
+#[test]
+fn synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first() {
+    let mut reader = LittleEndian::new(&SYNTHETIC_FOLD_BYTES, SYNTHETIC_HOST_ORIGIN);
+    let value = reader.u16().expect("the executable layer reads two bytes");
+    assert_eq!(
+        value, SYNTHETIC_U16_HOST,
+        "the executable layer folds 12 34 as 0x3412"
+    );
+    assert_eq!(
+        value, 13_330,
+        "the same value written out, so a wrong constant in the ledger fails"
+    );
+    assert_eq!(reader.offset(), WIDTH_U16, "one u16 consumed two bytes");
+
+    let mut short = LittleEndian::new(&SYNTHETIC_ONE_BYTE_SHORT, SYNTHETIC_HOST_ORIGIN);
+    let (offset, field, origin, needed, available) =
+        little_endian_truncated(short.u16().map(|_| ()), "host u16 from one byte");
+    assert_eq!(offset, 0, "the refused read started at byte 0");
+    assert_eq!(field, FIELD_U16, "the refusal names the u16 field");
+    assert_eq!(
+        origin, SYNTHETIC_HOST_ORIGIN,
+        "the refusal names the origin"
+    );
+    assert_eq!(needed, WIDTH_U16, "the refusal says two bytes were wanted");
+    assert_eq!(available, WIDTH_U8, "the refusal says one byte was left");
+    assert_eq!(
+        short.offset(),
+        0,
+        "and a refused read leaves the cursor where it was"
+    );
+}
+
+/// claim: END-015, END-014, END-017, END-018, END-022
+/// oracle: class 5 (hand computed vectors from the spec: `12 34 56 78` folds most significant byte first to 0x12345678; a three byte buffer is refused)
+#[test]
+fn synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first() {
+    let mut reader = BigEndian::new(&SYNTHETIC_FOLD_BYTES, SYNTHETIC_ASSET_ORIGIN);
+    let value = reader.u32().expect("the asset layer reads four bytes");
+    assert_eq!(
+        value, SYNTHETIC_U32_ASSET,
+        "the asset layer folds 12 34 56 78 as 0x12345678"
+    );
+    assert_eq!(
+        value, 305_419_896,
+        "the same value written out, so a wrong constant in the ledger fails"
+    );
+    assert_eq!(reader.offset(), WIDTH_U32, "one u32 consumed four bytes");
+
+    let mut short = BigEndian::new(&SYNTHETIC_THREE_BYTES_SHORT, SYNTHETIC_ASSET_ORIGIN);
+    let (offset, field, origin, needed, available) =
+        big_endian_truncated(short.u32().map(|_| ()), "asset u32 from three bytes");
+    assert_eq!(offset, 0, "the refused read started at byte 0");
+    assert_eq!(field, FIELD_U32, "the refusal names the u32 field");
+    assert_eq!(
+        origin, SYNTHETIC_ASSET_ORIGIN,
+        "the refusal names the origin"
+    );
+    assert_eq!(needed, WIDTH_U32, "the refusal says four bytes were wanted");
+    assert_eq!(
+        available,
+        WIDTH_U32 - 1,
+        "the refusal says three bytes were left"
+    );
+    assert_eq!(
+        short.offset(),
+        0,
+        "and a refused read leaves the cursor where it was"
+    );
+}
+
+/// claim: END-015, END-014, END-017, END-018, END-022
+/// oracle: class 5 (hand computed vectors from the spec: `12 34 56 78` folds least significant byte first to 0x78563412; a three byte buffer is refused)
+#[test]
+fn synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first() {
+    let mut reader = LittleEndian::new(&SYNTHETIC_FOLD_BYTES, SYNTHETIC_HOST_ORIGIN);
+    let value = reader.u32().expect("the executable layer reads four bytes");
+    assert_eq!(
+        value, SYNTHETIC_U32_HOST,
+        "the executable layer folds 12 34 56 78 as 0x78563412"
+    );
+    assert_eq!(
+        value, 2_018_915_346,
+        "the same value written out, so a wrong constant in the ledger fails"
+    );
+    assert_eq!(reader.offset(), WIDTH_U32, "one u32 consumed four bytes");
+
+    let mut short = LittleEndian::new(&SYNTHETIC_THREE_BYTES_SHORT, SYNTHETIC_HOST_ORIGIN);
+    let (offset, field, origin, needed, available) =
+        little_endian_truncated(short.u32().map(|_| ()), "host u32 from three bytes");
+    assert_eq!(offset, 0, "the refused read started at byte 0");
+    assert_eq!(field, FIELD_U32, "the refusal names the u32 field");
+    assert_eq!(
+        origin, SYNTHETIC_HOST_ORIGIN,
+        "the refusal names the origin"
+    );
+    assert_eq!(needed, WIDTH_U32, "the refusal says four bytes were wanted");
+    assert_eq!(
+        available,
+        WIDTH_U32 - 1,
+        "the refusal says three bytes were left"
+    );
+    assert_eq!(
+        short.offset(),
+        0,
+        "and a refused read leaves the cursor where it was"
+    );
+}
+
+/// claim: END-016, END-015, END-014, END-017, END-018, END-022
+/// oracle: class 5 (hand computed vectors from the spec: `FF FE` read most significant byte first is 0xFFFE, which is -2 as an i16; a one byte buffer is refused)
+#[test]
+fn synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement() {
+    let mut reader = BigEndian::new(&SYNTHETIC_SIGNED_PAIR, SYNTHETIC_ASSET_ORIGIN);
+    let value = reader.i16().expect("the asset layer reads an i16");
+    assert_eq!(
+        value, SYNTHETIC_SIGNED_PAIR_ASSET,
+        "the asset layer reads FF FE as -2, not as 65534"
+    );
+    assert_eq!(
+        value, -2,
+        "the same value written out, so a wrong constant in the ledger fails"
+    );
+    assert_eq!(reader.offset(), WIDTH_U16, "one i16 consumed two bytes");
+
+    // The same two bytes read the other way round are a different number, so
+    // the sign did not come from a conversion that ignores the order.
+    let mut host = LittleEndian::new(&SYNTHETIC_SIGNED_PAIR, SYNTHETIC_HOST_ORIGIN);
+    assert_eq!(
+        host.i16().expect("the executable layer reads an i16"),
+        SYNTHETIC_SIGNED_PAIR_HOST,
+        "the executable layer reads the same FF FE as -257"
+    );
+
+    let mut short = BigEndian::new(&SYNTHETIC_ONE_BYTE_SHORT, SYNTHETIC_ASSET_ORIGIN);
+    let (offset, field, origin, needed, available) =
+        big_endian_truncated(short.i16().map(|_| ()), "asset i16 from one byte");
+    assert_eq!(offset, 0, "the refused read started at byte 0");
+    assert_eq!(field, FIELD_I16, "the refusal names the i16 field");
+    assert_eq!(
+        origin, SYNTHETIC_ASSET_ORIGIN,
+        "the refusal names the origin"
+    );
+    assert_eq!(needed, WIDTH_U16, "the refusal says two bytes were wanted");
+    assert_eq!(available, WIDTH_U8, "the refusal says one byte was left");
+    assert_eq!(
+        short.offset(),
+        0,
+        "and a refused read leaves the cursor where it was"
+    );
+}
+
+/// claim: END-016, END-015, END-014, END-017, END-018, END-022
+/// oracle: class 5 (hand computed vectors from the spec: `FF FE` read least significant byte first is 0xFEFF, which is -257 as an i16; a one byte buffer is refused)
+#[test]
+fn synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement() {
+    let mut reader = LittleEndian::new(&SYNTHETIC_SIGNED_PAIR, SYNTHETIC_HOST_ORIGIN);
+    let value = reader.i16().expect("the executable layer reads an i16");
+    assert_eq!(
+        value, SYNTHETIC_SIGNED_PAIR_HOST,
+        "the executable layer reads FF FE as -257, not as 65279"
+    );
+    assert_eq!(
+        value, -257,
+        "the same value written out, so a wrong constant in the ledger fails"
+    );
+    assert_eq!(reader.offset(), WIDTH_U16, "one i16 consumed two bytes");
+
+    // The same two bytes read the other way round are a different number, so
+    // the sign did not come from a conversion that ignores the order.
+    let mut asset = BigEndian::new(&SYNTHETIC_SIGNED_PAIR, SYNTHETIC_ASSET_ORIGIN);
+    assert_eq!(
+        asset.i16().expect("the asset layer reads an i16"),
+        SYNTHETIC_SIGNED_PAIR_ASSET,
+        "the asset layer reads the same FF FE as -2"
+    );
+
+    let mut short = LittleEndian::new(&SYNTHETIC_ONE_BYTE_SHORT, SYNTHETIC_HOST_ORIGIN);
+    let (offset, field, origin, needed, available) =
+        little_endian_truncated(short.i16().map(|_| ()), "host i16 from one byte");
+    assert_eq!(offset, 0, "the refused read started at byte 0");
+    assert_eq!(field, FIELD_I16, "the refusal names the i16 field");
+    assert_eq!(
+        origin, SYNTHETIC_HOST_ORIGIN,
+        "the refusal names the origin"
+    );
+    assert_eq!(needed, WIDTH_U16, "the refusal says two bytes were wanted");
+    assert_eq!(available, WIDTH_U8, "the refusal says one byte was left");
+    assert_eq!(
+        short.offset(),
+        0,
+        "and a refused read leaves the cursor where it was"
     );
 }

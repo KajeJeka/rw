@@ -329,11 +329,11 @@ note = "CRITTER.DAT block 0 dead pointer. Read and discarded."
 
 [[constant]]
 id = "DAT-C110"
-value = 39256
+value = 39038
 unit = "bytes"
 evidence = "CONFIRMED AGAINST ORIGINAL BINARY"
 claim = "DAT-021"
-note = "0x9958. Largest amount by which offset + uncompressed_size runs past EOF, on TEXT\\SPANISH\\GAME\\SCRNAME.MSG in MASTER.DAT. Bounding a stored region by the uncompressed size would reject this entry; 7 entries in total are affected, 5 in MASTER.DAT and 2 in CRITTER.DAT."
+note = "0x987E. Largest amount by which offset + uncompressed_size runs past EOF, on TEXT\\SPANISH\\GAME\\SCRNAME.MSG in MASTER.DAT. Bounding a stored region by the uncompressed size would reject this entry; 7 entries in total are affected, 5 in MASTER.DAT and 2 in CRITTER.DAT."
 
 [[constant]]
 id = "DAT-C120"

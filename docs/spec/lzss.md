@@ -708,6 +708,78 @@ Notes on the shape above, each one load-bearing:
 
 ---
 
+## Error text
+
+The wording of a refusal is ours to choose, not a fact about the game, so this
+section fixes it and `crates/fo1-lzss` renders what is written here. Every
+message names the offset, the declared size and the produced size, so a reader
+can tell where the decode stopped and how much it had written.
+
+```rust
+impl core::fmt::Display for LzssError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::OutputOverrun {
+                at,
+                declared_out,
+                produced,
+                token_len,
+            } => write!(
+                f,
+                "fo1-lzss: the token at input offset {at} would write {token_len} byte(s) past \
+                 the declared output size {declared_out} ({produced} produced)"
+            ),
+            Self::OutputShort {
+                at,
+                declared_out,
+                produced,
+                consumed,
+            } => write!(
+                f,
+                "fo1-lzss: the input ran out at offset {at} with {produced} of {declared_out} \
+                 declared output bytes produced ({consumed} input byte(s) consumed)"
+            ),
+            Self::TruncatedMatch {
+                at,
+                declared_out,
+                produced,
+                remaining_input,
+            } => write!(
+                f,
+                "fo1-lzss: the back reference at input offset {at} started with \
+                 {remaining_input} input byte(s) left and needs two ({produced} of \
+                 {declared_out} produced)"
+            ),
+            Self::IndexOverflow {
+                at,
+                declared_out,
+                produced,
+            } => write!(
+                f,
+                "fo1-lzss: ring arithmetic overflowed at input offset {at} \
+                 ({produced} of {declared_out} produced)"
+            ),
+        }
+    }
+}
+```
+
+| Variant | Exact text |
+| --- | --- |
+| `OutputOverrun` | `fo1-lzss: the token at input offset {at} would write {token_len} byte(s) past the declared output size {declared_out} ({produced} produced)` |
+| `OutputShort` | `fo1-lzss: the input ran out at offset {at} with {produced} of {declared_out} declared output bytes produced ({consumed} input byte(s) consumed)` |
+| `TruncatedMatch` | `fo1-lzss: the back reference at input offset {at} started with {remaining_input} input byte(s) left and needs two ({produced} of {declared_out} produced)` |
+| `IndexOverflow` | `fo1-lzss: ring arithmetic overflowed at input offset {at} ({produced} of {declared_out} produced)` |
+
+Worked example: a token at input offset 7 that would write 3 bytes past a
+declared output size of 12, with 12 bytes produced, renders
+
+```
+fo1-lzss: the token at input offset 7 would write 3 byte(s) past the declared output size 12 (12 produced)
+```
+
+---
+
 ## 9. A source that is not the original binary
 
 ### LZSS-025 — Community Edition reads the same write index, 4078
