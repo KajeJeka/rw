@@ -460,6 +460,7 @@ fn dat_028_candidate_discovery_lists_all_thirty_one_names() {
 /// entries constrains the rules above together. It is a class 3 oracle, known
 /// plaintext, and it is a class 1, 2 or 3 witness for every rule it carries.
 ///
+/// oracle: class 3 (known plaintext: the loose file on disk)
 /// claim: DAT-029, LZSS-001, LZSS-002, LZSS-003, LZSS-005, LZSS-006, LZSS-007, LZSS-008, LZSS-009, LZSS-010, LZSS-011, LZSS-012, LZSS-016, LZSS-017, LZSS-018, LZSS-019
 #[test]
 #[ignore = "needs FO1_DATA"]
@@ -640,6 +641,9 @@ fn dat_028_every_candidate_is_accounted_for_in_exactly_one_bucket() {
 ///
 /// This is the algebraic law under the two buckets above: a patched copy differs
 /// in bytes, never in length, which is why the size match finds all 31.
+///
+/// oracle: class 6 (algebraic law: a decoded entry produces exactly the size its
+/// record declares)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn every_candidate_decodes_to_its_declared_uncompressed_size() {

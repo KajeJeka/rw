@@ -1554,7 +1554,7 @@ fn install_player_stat_limits_end_where_the_xp_table_begins() {
     );
 }
 
-/// claim: EXETBL-013
+/// claim: EXETBL-013, END-001, END-006, END-008, END-015
 /// oracle: class 1 (bytes of the original executable)
 #[test]
 #[ignore = "needs FO1_DATA: the reference install's falloutw.exe"]
@@ -1625,7 +1625,7 @@ fn install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_
     );
 }
 
-/// claim: EXETBL-009, EXETBL-015
+/// claim: EXETBL-009, EXETBL-015, END-005, END-007
 /// oracle: class 1 (bytes of the original executable)
 #[test]
 #[ignore = "needs FO1_DATA: the reference install's falloutw.exe"]
@@ -2517,7 +2517,7 @@ fn install_player_critical_first_and_last_records_carry_the_measured_bytes() {
     );
 }
 
-/// claim: EXETBL-002
+/// claim: EXETBL-002, END-004
 /// oracle: class 1 (bytes of the original executable)
 #[test]
 #[ignore = "needs FO1_DATA: the reference install's falloutw.exe"]
