@@ -897,10 +897,10 @@ def tests_of(src):
 def cfg_test_blocks(src):
     """The inline `#[cfg(test)] mod NAME { ... }` blocks of a file.
 
-    One entry per block: the module name, the first line and the last line
-    of the block, the attribute included. A `#[cfg(test)] mod NAME;`
-    declaration is not a block: its tests live in another file, and that file
-    is judged on its own.
+    One entry per block: the module name, the first line of the block (the
+    attribute included), the line the module item starts on, and the last line
+    of the block. A `#[cfg(test)] mod NAME;` declaration is not a block: its
+    tests live in another file, and that file is judged on its own.
     """
     code = blank(src)
     lines = src.split('\n')
@@ -945,7 +945,7 @@ def cfg_test_blocks(src):
             i = attr + 1
             continue
         last = j + body.count('\n', 0, end)
-        blocks.append((m.group(1), attr + 1, last + 1))
+        blocks.append((m.group(1), attr + 1, j + 1, last + 1))
         i = last + 1
     return blocks
 
@@ -955,18 +955,21 @@ def rest_of(src, inside_tests_only):
 
     With inside_tests_only the code outside the cfg(test) regions is left
     out: a crate's implementation is not the file's shared test code, and a
-    change to it must not be charged to every test of the file.
+    change to it must not be charged to every test of the file. The region's
+    own lines (the attribute, the module item and the closing brace) are left
+    out as well: they are the frame of the tests, not code the tests share,
+    so a new test module does not charge the tests of the old one.
     """
     covered = set()
     for _name, first, last, _digest in tests_of(src):
         for number in range(first, last + 1):
             covered.add(number)
+    blocks = cfg_test_blocks(src)
     inside = set()
-    for _name, first, last in cfg_test_blocks(src):
-        for number in range(first, last + 1):
+    for _name, _attr, item, last in blocks:
+        for number in range(item + 1, last):
             inside.add(number)
     rest = []
-    blocks = cfg_test_blocks(src)
     for number, line in enumerate(src.split('\n'), start=1):
         if number in covered:
             continue
@@ -994,10 +997,10 @@ def splice(base_src, head_src):
     if not head_blocks:
         return None
     base_blocks = {}
-    for name, first, last in cfg_test_blocks(base_src):
+    for name, first, _item, last in cfg_test_blocks(base_src):
         base_blocks[name] = (first, last)
     edits = []
-    for name, h_first, h_last in head_blocks:
+    for name, h_first, _item, h_last in head_blocks:
         text = head_lines[h_first - 1:h_last]
         if name in base_blocks:
             b_first, b_last = base_blocks[name]
