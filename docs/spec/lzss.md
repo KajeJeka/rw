@@ -393,7 +393,15 @@ Reported rather than silently adopted; see the report that accompanies this spec
 
 ### LZSS-021 — The gate must contain canaries proving the suite rejects 0 and 4095
 
-`CONFIRMED AGAINST ORIGINAL BINARY`
+`UNVERIFIED`
+
+This is a requirement on the gate suite, not a measurement of the original
+binary. The witness is `synthetic_lzss.rs::synthetic_canary_rejects_write_index_4095_zero_and_prefill_00`,
+which runs the independent reference decoder at the two wrong constant sets and
+is oracle class 4. No oracle class 1, 2 or 3 can observe a test suite, so this
+claim carries no class 1, 2 or 3 witness and the gate does not demand one. The
+measurement behind the ruling it protects is LZSS-020, which the corpus closure
+does witness.
 
 A constant nothing can falsify is not a ruling. The gate must prove that the suite
 rejects each wrong value, so that no future agent can quietly change `RING_WRITE_START`
