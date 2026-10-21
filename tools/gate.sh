@@ -1583,8 +1583,14 @@ mkdir -p "$MANIFEST_DIR"
 
 manifest_of() {
     # manifest_of <ref> <package dir>
-    local ref="$1" dir="$2" out
-    out="$MANIFEST_DIR/$(printf '%s' "$ref" | tr '/:' '__')-$(printf '%s' "$dir" | tr '/' '_')"
+    local ref="$1" dir="$2" out tag
+    case "$dir" in
+        # A file name must not end in a dot: Windows drops it, and the file
+        # the gate wrote would not be the file the gate reads.
+        .) tag='root' ;;
+        *) tag=$(printf '%s' "$dir" | tr '/' '_') ;;
+    esac
+    out="$MANIFEST_DIR/$(printf '%s' "$ref" | tr '/:' '__')-$tag"
     if [ "$dir" = "." ]; then
         git show "$ref:Cargo.toml" >"$out" 2>/dev/null || return 1
     else
