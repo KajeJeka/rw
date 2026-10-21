@@ -1041,10 +1041,10 @@ run_outcome() {
 # name, implementation file, the line to replace, the line that replaces it,
 # reason. A malformed entry comes back as MALFORMED.
 #
-# Only the "## Recorded mutation kills" section is read. The fields are split
-# on the first six " :: " separators, with spaces around them: a Rust line
-# often holds a "::" of its own, so a separator without spaces would cut a
-# line in half. A field that holds " :: " cannot be written down, and the
+# Only the "## Recorded mutation kills" section is read. The six fields are
+# split on the first five " :: " separators, with spaces around them: a Rust
+# line often holds a "::" of its own, so a separator without spaces would cut
+# a line in half. A field that holds " :: " cannot be written down, and the
 # gate says so instead of guessing.
 read_records() {
     [ -f "$NOTES_FILE" ] || return 0
