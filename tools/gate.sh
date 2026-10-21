@@ -698,7 +698,7 @@ cat >"$GATE_TOOLS" <<'PYTHON'
 """Where the tests of a Rust file live, and how to change one line of it.
 
 names FILE            one line per test: name, first line, last line, digest
-rest FILE             the lines of the file that lie outside every test
+rest FILE             the code of the file that lies outside every test
 mutate FILE FROM TO   replace the one line whose text is FROM with TO
 """
 import hashlib
@@ -883,6 +883,8 @@ def main(argv):
             stripped = line.strip()
             if stripped == '':
                 continue
+            if stripped.startswith('//'):
+                continue
             rest.append(stripped)
         print('\n'.join(rest))
         return 0
@@ -989,8 +991,8 @@ read_notes() {
             N3 = trim(rest)
             return 1
         }
-        /^##[[:space:]]+Entries/ { insec = 1; next }
-        /^##[[:space:]]/ { insec = 0 }
+        /^##[[:space:]]+Entries[[:space:]]*$/ { insec = 1; next }
+        /^#+[[:space:]]/ { insec = 0 }
         insec != 1 { next }
         {
             line = $0
@@ -1072,8 +1074,8 @@ read_records() {
             if (R1 == "" || R2 == "" || R3 == "" || R4 == "" || R5 == "" || R6 == "" || R7 == "") return 0
             return 1
         }
-        /^##[[:space:]]+Recorded mutation kills/ { insec = 1; next }
-        /^##[[:space:]]/ { insec = 0 }
+        /^##[[:space:]]+Recorded mutation kills[[:space:]]*$/ { insec = 1; next }
+        /^#+[[:space:]]/ { insec = 0 }
         insec != 1 { next }
         {
             line = $0
@@ -1106,10 +1108,11 @@ source_tests_of() {
     "$PYTHON_BIN" "$GATE_TOOLS" names "$tmp" 2>/dev/null
 }
 
-# The part of a file that lies outside every test of that file: the shared
-# helpers, the use statements, the attributes. A change there reaches tests
-# the gate cannot attribute to one of them, so the gate charges it to all of
-# them.
+# The code of a file that lies outside every test of that file: the shared
+# helpers, the use statements, the attributes. Comments are left out, because
+# a comment cannot change what a test does. A change in this code reaches
+# tests the gate cannot attribute to one of them, so the gate charges it to
+# all of them.
 source_rest_of() {
     # source_rest_of <ref> <path>
     local ref="$1" path="$2" tmp
@@ -1496,7 +1499,7 @@ EOF
                     h_rest=$(source_rest_of HEAD "$rel")
                     b_rest=$(source_rest_of "$BASE_REF" "$rel")
                     if [ "$h_rest" != "$b_rest" ]; then
-                        printf '  the file changed outside every test, so every test in it is treated as changed\n'
+                        printf '  the code outside every test changed, so every test in it is treated as changed\n'
                         CHANGED_SET="$head_list"$'\n'
                     fi
 

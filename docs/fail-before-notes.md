@@ -32,7 +32,7 @@ tests was proved. That is why the unit of judgement here is the test.
 This file is a PROTECTED file: a change to it is noticed by step 1, so the
 owner reviews every record and every exemption.
 
-## Entries: the exemptions
+### Entries: the exemptions
 
 An exemption says why a test that passes on the base is acceptable anyway.
 One entry per test, in this shape:
@@ -61,7 +61,7 @@ that the gate does not understand fails step 7: an approval nobody can read
 is not an approval. "None yet." is the empty list, and it is removed when the
 first entry is added.
 
-## Recorded mutation kills: the other way through
+### Recorded mutation kills: the other way through
 
 A recorded mutation kill says that the test still has teeth: it names a
 mutation of the implementation, and the gate proves the claim by applying
@@ -104,7 +104,7 @@ None yet.
 
 None yet.
 
-## Historical file-level notes
+### Historical file-level notes
 
 These are the notes the M0 and M1a closure wrote, when the gate still judged
 a changed test FILE. The gate does not read this section: the rule is now
