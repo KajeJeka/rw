@@ -2073,7 +2073,7 @@ EOF
 prepare_base_tree() {
     local rel="$1" jdir="$2" jband="$3"
     local c cdir cname cband deps head_copy
-    deps=" $(package_deps "$jdir") "
+    deps=" $(package_deps "$jdir" | tr '\n' ' ')"
     while IFS= read -r c; do
         [ -n "$c" ] || continue
         cdir=$(package_of_file "$c") || continue
@@ -2136,7 +2136,7 @@ EOF
 print_base_tree_state() {
     local rel="$1" jdir="$2" jband="$3"
     local c cdir cname cband deps digest
-    deps=" $(package_deps "$jdir") "
+    deps=" $(package_deps "$jdir" | tr '\n' ' ')"
     printf '  base tree: restored to %s before this run\n' "$BASE_REF"
     while IFS= read -r c; do
         [ -n "$c" ] || continue
