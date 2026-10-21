@@ -364,42 +364,63 @@ const PAYLOAD_MODE_CASE_COUNT: usize = 7;
 
 // --- oracle 5: the error type's rendered message -------------------------------
 
-/// The nine variants of `DatError`, the quantity each one must report, and the
-/// name the variant is graded under.
+/// The nine variants of `DatError`, the quantity each one must report, the name
+/// the variant is graded under, and the exact text the spec fixes for it.
 ///
 /// `docs/spec/dat.md` DAT-030 fixes the variant set and what each variant
-/// means. It does not fix the wording of a single message: compare
-/// `docs/spec/exe-tables.md`, which prints the whole `Display` impl for
-/// `ExeError` inside the spec, so the EXE gate can assert exact text and this
-/// one cannot. So the assertion below is the CONTENT: the message is not
-/// empty, it names the offending quantity, and no two variants render the same
-/// message, because two variants that rendered the same text would not be
-/// naming what went wrong.
+/// means, and the *Error text* section of the same document fixes the wording
+/// of every message, the way `docs/spec/exe-tables.md` does for the executable
+/// layer. The expected strings below are read from that section, so they are
+/// the spec's words and not a copy of what the crate happens to print: the
+/// assertion below fails the moment the wording moves.
 ///
 /// The quantities are hand chosen and pairwise distinct, so a message that
 /// names the wrong number fails instead of passing on a coincidence. The
 /// variant with no quantity of its own is the one that reports an arithmetic
 /// failure rather than a place.
-const DAT_ERROR_CASES: [(&str, DatError, &[u64]); 9] = [
-    ("Truncated", DatError::Truncated { at: 41 }, &[41]),
+const DAT_ERROR_CASES: [(&str, DatError, &[u64], &str); 9] = [
+    (
+        "Truncated",
+        DatError::Truncated { at: 41 },
+        &[41],
+        "fo1-dat: the archive ran out at byte 41",
+    ),
     (
         "LengthOutOfRange",
         DatError::LengthOutOfRange { at: 42 },
         &[42],
+        "fo1-dat: a length field at byte 42 exceeded the bytes present",
     ),
-    ("OutOfBounds", DatError::OutOfBounds { at: 43 }, &[43]),
-    ("OffsetOverflow", DatError::OffsetOverflow, &[]),
+    (
+        "OutOfBounds",
+        DatError::OutOfBounds { at: 43 },
+        &[43],
+        "fo1-dat: a region at byte 43 ran outside the archive",
+    ),
+    (
+        "OffsetOverflow",
+        DatError::OffsetOverflow,
+        &[],
+        "fo1-dat: an offset plus a length overflowed",
+    ),
     (
         "UnknownPayloadMode",
         DatError::UnknownPayloadMode { flags: 0x5A },
         &[0x5A],
+        "fo1-dat: the flags word 0x5A names no known payload mode",
     ),
     (
         "OutputOverrun",
         DatError::OutputOverrun { declared: 44 },
         &[44],
+        "fo1-dat: the tokens would write past 44 declared bytes",
     ),
-    ("OutputShort", DatError::OutputShort { declared: 45 }, &[45]),
+    (
+        "OutputShort",
+        DatError::OutputShort { declared: 45 },
+        &[45],
+        "fo1-dat: the stream ended short of 45 declared bytes",
+    ),
     (
         "ConsumptionMismatch",
         DatError::ConsumptionMismatch {
@@ -407,8 +428,14 @@ const DAT_ERROR_CASES: [(&str, DatError, &[u64]); 9] = [
             actual: 47,
         },
         &[46, 47],
+        "fo1-dat: the payload consumed 47 byte(s) against 46 declared",
     ),
-    ("EmptyBlock", DatError::EmptyBlock { at: 48 }, &[48]),
+    (
+        "EmptyBlock",
+        DatError::EmptyBlock { at: 48 },
+        &[48],
+        "fo1-dat: the block header at byte 48 declares a zero length payload",
+    ),
 ];
 
 /// Number of rows in [`DAT_ERROR_CASES`], which is the number of variants the
@@ -760,6 +787,44 @@ const TRUNCATED_TREE_BYTES: usize = ROOT_FIELD_2_OFFSET + 2;
 /// ten byte fixture stops two bytes into it, so the read that fails is the four
 /// byte read that starts at byte 8 (DAT-030).
 const TRUNCATED_AT: u64 = 8;
+
+/// Byte offset of the root header's field 3, the fourth u32. Three fields of
+/// four bytes each come before it (DAT-001).
+const ROOT_FIELD_3_OFFSET: usize = 3 * ROOT_FIELD_0_WIDTH;
+
+/// Length of the second truncated fixture: the root header's fourth u32 starts
+/// at byte 12 and needs four bytes, so fifteen bytes leaves three of them.
+const TRUNCATED_FIELD3_TREE_BYTES: usize = ROOT_FIELD_3_OFFSET + 3;
+
+/// The byte position the second truncated fixture reports. The root header's
+/// fourth u32 starts at byte 12, so the read that fails is the four byte read
+/// that starts at byte 12 (DAT-030).
+const TRUNCATED_FIELD3_AT: u64 = 12;
+
+/// Byte offset of the first directory's name bytes: the root header is sixteen
+/// bytes and the name length byte is one more (DAT-001, DAT-003).
+const TRUNCATED_NAME_OFFSET: usize = HEADER_WIDTH + NAME_LENGTH_WIDTH;
+
+/// Length of the third truncated fixture: the root header, a name length byte
+/// that says two, and one byte of the name that follows it. The name field is
+/// missing its second byte.
+const TRUNCATED_NAME_TREE_BYTES: usize = TRUNCATED_NAME_OFFSET + 1;
+
+/// The byte position the third truncated fixture reports. The name field starts
+/// at byte 17 and the archive stops one byte into it, so the region that ran
+/// out starts at 17 and not at the 18 the reader noticed it at (DAT-030).
+const TRUNCATED_NAME_AT: u64 = 17;
+
+/// The name length byte of the third truncated fixture: it says two, and only
+/// one of the two bytes is in the archive.
+const TRUNCATED_NAME_LENGTH: u8 = 2;
+
+/// The one byte of the name that the third truncated fixture does carry.
+const TRUNCATED_NAME_BYTE: u8 = b'A';
+
+/// Root header field 0 of the third truncated fixture: one directory, so the
+/// reader reaches the name that is cut short.
+const TRUNCATED_NAME_DIRECTORIES: u32 = 1;
 
 /// Root header field 0 that no fixture can satisfy: more directories than the
 /// archive has bytes for.
@@ -2942,7 +3007,7 @@ fn synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted() {
 }
 
 /// claim: DAT-030, DAT-001
-/// oracle: class 5 (hand computed vectors from the spec: the root header is four big endian u32, so its third field starts at byte 8 and a ten byte tree runs out there)
+/// oracle: class 5 (hand computed vectors from the spec: the root header is four big endian u32, so its third field starts at byte 8 and a ten byte tree runs out there, and an error carries the offset the failed field started at)
 #[test]
 fn synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at() {
     // The good input twin. A complete synthetic archive goes through the same
@@ -2984,6 +3049,11 @@ fn synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at() {
     // the one that starts at byte 8. The error carries that position (DAT-030),
     // which is the whole claim: the refusal says where it ran out and not only
     // that it ran out.
+    //
+    // The rule the spec fixes is that the offset is the one the failed
+    // operation started at, so the error carries 8 and not the 10 the reader
+    // noticed it had run out at. The two readings are one byte apart for a
+    // field that is missing its second byte, which is the third refusal below.
     let error = match DatArchive::parse(&truncated, SYNTHETIC_ORIGIN) {
         Ok(_) => panic!("a ten byte tree must be refused"),
         Err(error) => error,
@@ -2992,6 +3062,54 @@ fn synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at() {
         error,
         DatError::Truncated { at: TRUNCATED_AT },
         "a ten byte tree runs out at byte 8, where the root header's third u32 starts"
+    );
+
+    // The second refusal, one field further on. The root header's fourth u32
+    // starts at byte 12 and a fifteen byte tree leaves three of its four bytes,
+    // so the read that fails is the one that starts at byte 12. The error
+    // carries 12 and not the 15 the reader noticed it at.
+    let truncated_field3 = [0u8; TRUNCATED_FIELD3_TREE_BYTES];
+    assert_eq!(
+        truncated_field3.len(),
+        15,
+        "hand computed truncation length"
+    );
+    let field3_error = match DatArchive::parse(&truncated_field3, SYNTHETIC_ORIGIN) {
+        Ok(_) => panic!("a fifteen byte tree must be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        field3_error,
+        DatError::Truncated {
+            at: TRUNCATED_FIELD3_AT
+        },
+        "a fifteen byte tree runs out at byte 12, where the root header's fourth u32 starts"
+    );
+
+    // The third refusal is the one the two readings are one byte apart on. A
+    // directory name says two bytes and only one of them is in the archive, so
+    // the name field is missing its second byte. The error carries 17, where
+    // the name field starts, and not the 18 the reader noticed it at.
+    let mut truncated_name = Vec::new();
+    push_u32(&mut truncated_name, TRUNCATED_NAME_DIRECTORIES);
+    push_u32(&mut truncated_name, 0);
+    push_u32(&mut truncated_name, 0);
+    push_u32(&mut truncated_name, 0);
+    truncated_name.push(TRUNCATED_NAME_LENGTH);
+    truncated_name.push(TRUNCATED_NAME_BYTE);
+    assert_eq!(
+        truncated_name.len(),
+        TRUNCATED_NAME_TREE_BYTES,
+        "hand computed truncation length"
+    );
+    let name_error = match DatArchive::parse(&truncated_name, SYNTHETIC_ORIGIN) {
+        Ok(_) => panic!("a tree with a half written directory name must be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        name_error,
+        DatError::LengthOutOfRange { at: TRUNCATED_NAME_AT },
+        "a name field that is missing its second byte reports the byte the field starts at, not the byte the reader noticed it at"
     );
 }
 
@@ -3040,7 +3158,7 @@ fn synthetic_the_archive_reports_the_label_it_was_parsed_under() {
 }
 
 /// claim: DAT-030, DAT-024
-/// oracle: class 5 (hand computed vectors from the spec: every error variant names the quantity it is about)
+/// oracle: class 5 (hand computed vectors from the spec: every error variant names the quantity it is about, and the *Error text* section of `docs/spec/dat.md` fixes the wording of every message word for word)
 #[test]
 fn synthetic_every_error_variant_names_what_went_wrong() {
     assert_eq!(
@@ -3050,7 +3168,7 @@ fn synthetic_every_error_variant_names_what_went_wrong() {
     );
 
     let mut rendered: Vec<String> = Vec::new();
-    for (name, error, quantities) in DAT_ERROR_CASES {
+    for (name, error, quantities, expected) in DAT_ERROR_CASES {
         let text = error.to_string();
         assert_eq!(
             dat_error_name(&error),
@@ -3064,6 +3182,14 @@ fn synthetic_every_error_variant_names_what_went_wrong() {
                 "{name}: the message must name {quantity}"
             );
         }
+        // The spec fixes the wording of every message, so the message is
+        // asserted in full and not only for the quantity it names. This is what
+        // makes the assertion able to fail: a message that names the right
+        // number in the wrong words is still a message the spec does not fix.
+        assert_eq!(
+            text, *expected,
+            "{name}: the message is the spec's, word for word"
+        );
         rendered.push(text);
     }
     assert_eq!(

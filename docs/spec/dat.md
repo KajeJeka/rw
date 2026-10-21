@@ -424,7 +424,18 @@ length or a block count. It also confirms the entry is a chain
 
 ### DAT-030 — The Rust interface
 
-`CONFIRMED AGAINST ORIGINAL BINARY`
+`UNVERIFIED`
+
+This is the conservative tag, and it replaces the `CONFIRMED AGAINST ORIGINAL
+BINARY` this claim carried before. The claim is an interface: a set of Rust
+types, signatures and error variants. An interface is a decision this port
+makes, and the guide settles none of it — the subsection below says so in the
+spec's own words. No Community Edition source was opened for this spec either,
+so the other conservative tag, `CONFIRMED IN COMMUNITY EDITION ONLY`, cannot
+apply: there is no source of any kind behind this claim but the decision
+itself. The facts the interface encodes — the header layout, the field order,
+the counts, the mode nibbles — are measured, and they live under DAT-001 to
+DAT-029. What is unverified here is the shape that carries them.
 
 ```rust
 //! DAT archive container.
@@ -437,23 +448,50 @@ length or a block count. It also confirms the entry is a chain
 /// Everything the reader can fail at. There is no panic path.
 pub enum DatError {
     /// The declared structure ran out before the reader did.
-    Truncated { at: u64 },
-    /// A length or count field exceeded the bytes actually present.
-    LengthOutOfRange { at: u64 },
+    Truncated {
+        /// File-relative byte offset at which the reader ran out.
+        at: u64,
+    },
+    /// A length or count field exceeded the bytes actually present, or a stored
+    /// name was not the UTF-8 the path type requires.
+    LengthOutOfRange {
+        /// File-relative byte offset of the length byte or field.
+        at: u64,
+    },
     /// A block header or payload ran outside the archive.
-    OutOfBounds { at: u64 },
+    OutOfBounds {
+        /// File-relative byte offset of the region that ran out.
+        at: u64,
+    },
     /// An offset plus a length did not fit in the address arithmetic.
     OffsetOverflow,
     /// A flags high nibble this build does not know.
-    UnknownPayloadMode { flags: u32 },
+    UnknownPayloadMode {
+        /// The flags word exactly as stored, reported back whole.
+        flags: u32,
+    },
     /// The tokens would have written more than the declared output size.
-    OutputOverrun { declared: u32 },
+    OutputOverrun {
+        /// The declared uncompressed size that was exceeded.
+        declared: u32,
+    },
     /// The stream ended before reaching the declared output size.
-    OutputShort { declared: u32 },
+    OutputShort {
+        /// The declared uncompressed size that was not reached.
+        declared: u32,
+    },
     /// The payload did not consume exactly the declared compressed size.
-    ConsumptionMismatch { declared: u32, actual: u32 },
+    ConsumptionMismatch {
+        /// The compressed size the entry declares.
+        declared: u32,
+        /// The bytes the payload actually consumed.
+        actual: u32,
+    },
     /// A block header declared a zero length payload.
-    EmptyBlock { at: u64 },
+    EmptyBlock {
+        /// File-relative byte offset of the block header.
+        at: u64,
+    },
 }
 
 /// One directory of the two level tree.
@@ -491,11 +529,13 @@ pub struct ChainStats {
 }
 
 pub struct DatArchive {
+    /// Diagnostic label the archive was parsed under (DAT-030). It names which
+    /// archive a message came from and is never a path to open.
+    origin: &'static str,
+    /// Directories in file order, one per block header.
     directories: Vec<DirectoryRecord>,
+    /// Entries in tree order: all of block 0, then all of block 1, and so on.
     entries: Vec<EntryRecord>,
-    /// Uppercased composed path to position in `entries`. Empty until first
-    /// lookup, because most callers only iterate.
-    index: std::cell::OnceCell<std::collections::HashMap<String, usize>>,
 }
 
 impl DatArchive {
@@ -503,6 +543,9 @@ impl DatArchive {
     /// entries. Parsing never reads the payload region, so a truncated payload
     /// does not stop the directory from being listed.
     pub fn parse(bytes: &[u8], origin: &'static str) -> Result<Self, DatError>;
+
+    /// The diagnostic label this archive was parsed under (DAT-030).
+    pub fn origin(&self) -> &'static str;
 
     /// Directory names in file order.
     pub fn directories(&self) -> &[DirectoryRecord];
@@ -519,8 +562,12 @@ impl DatArchive {
     pub fn find(&self, upper_path: &str) -> Option<&EntryRecord>;
 }
 
-/// The high nibble of the flags. A flags value of 0 means 0x10; any other
-/// unknown nibble is an error rather than a default.
+/// The high nibble of the flags. A flags value of 0 means 0x10. Any other
+/// unknown nibble has no mode, and the error is raised where it can be
+/// observed: `decode_entry` and `decode_entry_with_stats` answer
+/// `DatError::UnknownPayloadMode` for every nibble this function cannot map.
+/// The signature returns a `PayloadMode` and cannot carry an error, so this
+/// function is total and names no real mode for a nibble it does not know.
 pub fn payload_mode(flags: u32) -> PayloadMode;
 
 /// Decodes one entry to exactly its declared uncompressed size, consuming
@@ -542,7 +589,14 @@ says what it is for. The crate has no I/O, so the reading that fits is a label
 carried on the archive for diagnostics — which archive a message came from — and
 never a path to open. It is a `&'static str` because the two archives are named
 once. This is an interface decision, recorded so the implementer does not invent
-a second meaning for it.
+a second meaning for it. The archive reports the label back through
+`origin()`, so a caller that holds an archive can say which archive a refusal
+came from without holding the label itself.
+
+The lookup index is an internal choice and is deliberately not part of the
+required interface above. A reader that wants one may build it once; a reader
+that only iterates need not build one at all, and nothing in the spec
+constrains the choice beyond correctness.
 
 `ChainStats` is required by the interface but no required function returns it. The
 smallest way to make it reachable is the extra `decode_entry_with_stats` above;
@@ -598,6 +652,35 @@ pub fn compose_path(directory: &str, name: &str) -> String {
 `compose_path` is a demonstration of the rule, not an extra required signature.
 A reader that needs a lookup table will want the index built once; that is an
 internal choice and the spec does not constrain it beyond correctness.
+
+### The byte offset an error carries
+
+Every `DatError` variant that carries an `at` carries **the byte offset at
+which the failed operation started**: the offset of the field or region that
+could not be read. It never carries the offset at which the failure was
+noticed.
+
+The guide's rule is that "variants carry the byte offset and the field name".
+An offset and a field name together identify one field, so the offset is that
+field's first byte and nothing else. The layer below says the same thing in
+its own words: `docs/spec/endian.md` END-022 fixes the endian layer's error as
+carrying "the byte offset at which the failed operation started", and the DAT
+reader copies that offset unchanged rather than recomputing one.
+
+The two readings are one byte apart whenever a field is missing its second
+byte, so the difference is not academic. Worked example, from DAT-001: the root
+header is four big endian u32 at `0x00..0x10`, so field 2 starts at `0x08`. A
+ten byte tree leaves two of the four bytes field 2 needs. The error is
+`DatError::Truncated { at: 8 }`, because the field that could not be read
+starts at 8. The reader notices that it has run out at byte 10, and 10 is
+**not** what the error carries: byte 10 is inside field 2 rather than at the
+start of it, and it identifies no field and no region of its own.
+
+The same rule holds for the offsets in `LengthOutOfRange`, `OutOfBounds` and
+`EmptyBlock`: each one is the offset of the region that ran out, not the
+offset at which the refusal was noticed. `OffsetOverflow` carries no offset
+because there is none to carry: no field and no region failed, the arithmetic
+did.
 
 ### DAT-031 — The caller uppercases the path; `find` folds nothing
 
@@ -674,6 +757,92 @@ accepts it and the behaviour is an open item, not a rule. See section 3.
 
 ---
 
+## Error text
+
+The wording of a refusal is ours to choose, not a fact about the game, so this
+section fixes it and `crates/fo1-dat` renders what is written here. Every
+message names the quantity the refusal is about — the byte offset of the region
+that ran out, the flags word, the declared size — so a reader can tell which
+part of the archive failed, and no message carries a byte of the archive.
+
+The guide's rule is that a variant carries "the byte offset and the field
+name". This error type carries the offset in the payload, and it names the
+field in the message instead: the table below says what each message must
+name, and the gate asserts the text of every variant word for word.
+
+```rust
+impl core::fmt::Display for DatError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match *self {
+            Self::Truncated { at } => {
+                write!(f, "fo1-dat: the archive ran out at byte {at}")
+            }
+            Self::LengthOutOfRange { at } => {
+                write!(
+                    f,
+                    "fo1-dat: a length field at byte {at} exceeded the bytes present"
+                )
+            }
+            Self::OutOfBounds { at } => {
+                write!(f, "fo1-dat: a region at byte {at} ran outside the archive")
+            }
+            Self::OffsetOverflow => write!(f, "fo1-dat: an offset plus a length overflowed"),
+            Self::UnknownPayloadMode { flags } => {
+                write!(
+                    f,
+                    "fo1-dat: the flags word {flags:#04X} names no known payload mode"
+                )
+            }
+            Self::OutputOverrun { declared } => {
+                write!(
+                    f,
+                    "fo1-dat: the tokens would write past {declared} declared bytes"
+                )
+            }
+            Self::OutputShort { declared } => {
+                write!(
+                    f,
+                    "fo1-dat: the stream ended short of {declared} declared bytes"
+                )
+            }
+            Self::ConsumptionMismatch { declared, actual } => {
+                write!(
+                    f,
+                    "fo1-dat: the payload consumed {actual} byte(s) against {declared} declared"
+                )
+            }
+            Self::EmptyBlock { at } => {
+                write!(
+                    f,
+                    "fo1-dat: the block header at byte {at} declares a zero length payload"
+                )
+            }
+        }
+    }
+}
+```
+
+| Variant | Exact text | What the message must name |
+| --- | --- | --- |
+| `Truncated` | `fo1-dat: the archive ran out at byte {at}` | The byte offset at which the failed operation started: the field that could not be read. |
+| `LengthOutOfRange` | `fo1-dat: a length field at byte {at} exceeded the bytes present` | The byte offset of the length byte or field that asked for more bytes than were present. |
+| `OutOfBounds` | `fo1-dat: a region at byte {at} ran outside the archive` | The byte offset of the region that ran outside the archive. |
+| `OffsetOverflow` | `fo1-dat: an offset plus a length overflowed` | Nothing but the overflow itself. There is no offset to name: no field and no region failed, the arithmetic did. |
+| `UnknownPayloadMode` | `fo1-dat: the flags word {flags:#04X} names no known payload mode` | The flags word exactly as stored, in upper case hex with a `0x` prefix. |
+| `OutputOverrun` | `fo1-dat: the tokens would write past {declared} declared bytes` | The declared uncompressed size the tokens would have written past. |
+| `OutputShort` | `fo1-dat: the stream ended short of {declared} declared bytes` | The declared uncompressed size the stream never reached. |
+| `ConsumptionMismatch` | `fo1-dat: the payload consumed {actual} byte(s) against {declared} declared` | Both numbers: the bytes the payload actually consumed and the compressed size the entry declares. |
+| `EmptyBlock` | `fo1-dat: the block header at byte {at} declares a zero length payload` | The byte offset of the block header that declares a zero length payload. |
+
+Worked example: a tree that runs out inside the root header's third field
+carries `at: 8`, and renders
+
+```
+fo1-dat: the archive ran out at byte 8
+```
+
+---
+
 ## 3. What this spec does NOT settle
 
 - **The LZSS codec.** Ring size, prefilled bytes, write index, token layout and
@@ -710,6 +879,12 @@ accepts it and the behaviour is an open item, not a rule. See section 3.
 - **Order of blocks within a chain.** Chains are read in stored order because
   that is the only order in which the output reaches the declared size. Nothing
   suggests a chain is reordered or seekable.
+- **Whether the field name belongs in the payload.** The guide says a variant
+  carries "the byte offset and the field name". `DatError` carries the offset in
+  the payload and names the field in the message, which the *Error text* section
+  fixes. The two carry the same fact in two places and the gate asserts the
+  message word for word, so a message that names the wrong field fails. Whether
+  the field name ought to be a payload field of its own is not settled here.
 
 ---
 

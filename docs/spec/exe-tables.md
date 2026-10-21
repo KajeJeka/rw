@@ -314,13 +314,13 @@ assign a meaning to fields 0, 1 and 2. See `EXETBL-016` and `EXETBL-017`.
 
 Five records of the same 24-byte layout, from file `0xE9058`:
 
-| Rec | File | min | max | default | Guide's subject | Reading |
-| --- | --- | --- | --- | --- | --- | --- |
-| 0 | `0xE9058` | 0 | 2147483647 | 0 | unspent skill points | consistent |
-| 1 | `0xE9070` | 1 | 2147483647 | 1 | level | consistent; default 1, not 0 |
-| 2 | `0xE9088` | 0 | 2147483647 | 0 | experience | consistent |
-| 3 | `0xE90A0` | -20 | 20 | 0 | reputation | consistent; signed range |
-| 4 | `0xE90B8` | 0 | 2147483647 | 0 | karma | consistent |
+| Rec | File | f0 | f1 | f2 | min | max | default | Guide's subject | Reading |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | `0xE9058` | 0 | 0 | 0 | 0 | 2147483647 | 0 | unspent skill points | consistent |
+| 1 | `0xE9070` | 0 | 0 | 0 | 1 | 2147483647 | 1 | level | consistent; default 1, not 0 |
+| 2 | `0xE9088` | 0 | 0 | 0 | 0 | 2147483647 | 0 | experience | consistent |
+| 3 | `0xE90A0` | 0 | 0 | 0 | -20 | 20 | 0 | reputation | consistent; signed range |
+| 4 | `0xE90B8` | 0 | 0 | 0 | 0 | 2147483647 | 0 | karma | consistent |
 
 `2147483647` is `i32::MAX`, i.e. an unbounded maximum written as the largest
 positive `i32`. Record 1 starting at 1 and defaulting to 1 is a genuine level
@@ -328,7 +328,24 @@ floor: a character cannot begin at level 0. Record 3's `-20 .. 20` range is the
 classic reputation span, which is consistent with the guide's ordering but is
 not proof of the label.
 
-Field 0 and field 1 are zero in all five records, as in the stat limits table.
+Field 0, field 1 and field 2 are zero in all five records, as fields 0 and 1
+are in the stat limits table above them.
+
+The field 2 value is a measurement, not an inference: the five records were
+read at file offset `0xE9058` in the reference executable, whose SHA-256 is the
+reference digest the build gate requires, and each record's field 2 is the four
+bytes at its own offset 8 read little endian. All five are `0`.
+
+What the value does **not** settle is what the field is. Five zeroes across
+five records with five different subjects means field 2 cannot be a per record
+index or a stat id in this table: the same reading cannot name the level, the
+experience, the reputation and the karma at once. The reading that fits the
+bytes is a slot this table does not use, the same shape as fields 0 and 1
+beside it, but the bytes cannot distinguish an unused slot from a reserved one
+or from any other field that happens to be zero here. No meaning is assigned
+and none may be inferred from a Community Edition table. The stat limits
+table's own fields 1 and 2 are left open in the claim below, and the question
+is listed at the end of this document.
 
 ---
 
@@ -538,6 +555,14 @@ them. Field 1 is `0` everywhere, which is consistent with an unused or reserved
 slot but does not establish one. Field 2 takes values including `0, 10, 11, 12,
 18, 20, 22, 23, 24, 25, 26, 31, 32, 75, 83, 94`, with non-unique and
 non-contiguous use.
+
+The five player stat limit records carry the same three leading fields, and
+there the field 2 value **is** measured: it is `0` in all five of them
+(EXETBL-008). The value and the meaning are two different questions, and only
+the value is settled. What that table shows is that a field can be constant
+across records whose subjects differ, so the stat limits table's varying field
+2 and the player table's constant field 2 are not read the same way, and
+neither of them is established as an index.
 
 No meaning is assigned. Any code that needs a stat id from this table must
 isolate that need as an open question rather than inventing a mapping. Nothing
@@ -1179,6 +1204,14 @@ table content.
    guide. The ranges are consistent with the guide's ordering, but the binary
    carries no label, so record 3 being `-20 .. 20` is evidence for
    "reputation", not proof of it.
+7. **The meaning of the player stat limits' field 2.** Its value is measured
+   and it is `0` in all five records (EXETBL-008), so it cannot be a per
+   record index or a stat id there: one reading cannot name the level, the
+   experience, the reputation and the karma at once. Whether it is an unused
+   slot, a reserved one, or something this build simply does not vary is not
+   established by the bytes, and the binary carries no label for it. This is
+   the same question EXETBL-017 leaves open for the stat limits table, and it
+   stays open rather than being answered with a guess.
 
 ---
 
