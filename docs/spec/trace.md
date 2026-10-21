@@ -9,7 +9,10 @@ test. `tools/check_trace.sh` fails when
 - the trace table's row for such a claim names a test that does not exist, that
   lives in a file the root `Cargo.toml` does not declare as a `[[test]]` gate
   target, or whose own doc attribute does not carry that claim id,
-- a test in the seven gate files is named by no row, or a claim id a test names
+- the map's class cell claims an oracle class the test does not declare,
+- a whole line evidence tag in a spec is claimed by no claim,
+- an exemption entry is malformed, or exempts nothing,
+- a test in the eight gate files is named by no row, or a claim id a test names
   has no row, or
 - the map is empty.
 
@@ -40,9 +43,16 @@ file has to be under `tests/gates/`, the root `Cargo.toml` has to declare it as
 a `[[test]]` gate target, the test has to exist in that file, and the test's own
 doc attribute has to carry the claim id.
 
+The class is not taken on trust. The gate reads the class from the test's own
+`oracle:` doc attribute and requires the map's cell to agree with it, so a map
+that relabels a class 5 test as class 1 fails the check instead of passing it.
+The witness rule reads the test's own class too, not the cell.
+
 A `†` marks a class taken from the module header of the file rather than
 restated on the test's own doc comment. It is the class the file declares, not a
-claim that this particular test re-declared it.
+claim that this particular test re-declared it. The gate checks a `†` class
+against the module header of the file and an unmarked class against the test's
+own `oracle:` line.
 
 A `‡` marks a value the ledger owns. The ledger row is the single source of the
 number, and the number is changed there first. DAT-021 ‡ carries the 39,038-byte
@@ -56,7 +66,7 @@ exact wording of every variant of `LittleEndianError`, `BigEndianError` and
 those sections the wording would be a value copied from the code under test,
 which the table above lists as not an oracle.
 
-Two witnesses in this map are joint, and the map says so where it matters.
+Three witnesses in this map are joint, and the map says so where it matters.
 `install_plaintext.rs::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte`
 is class 3, known plaintext: one byte-for-byte comparison over 28 real archive
 entries constrains the LZSS rules it carries together rather than one at a time.
@@ -65,9 +75,25 @@ is class 2: the closure over 20,456 chains constrains the corpus rules it
 carries together. Neither test isolates the rule it carries, and neither is
 meant to.
 
+The DAT root header is witnessed by two tests, and the two halves sit in two
+rows. `install_archive.rs::dat_025_directory_and_entry_counts_are_exact` reads
+the real header through the asset layer and closes its field 0 against the real
+directory count and its entries against the real entry totals (class 2, with
+the reference walk, class 4). The wrong order of the same four bytes is pinned
+by `synthetic_endian.rs::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers`,
+which is class 5 and cites END-035, END-006 and END-008: the little endian
+fold of the root header gives 1,090,519,040 for a directory count no archive
+holds, and that is the magnitude the asset layer is established by. END-035 is
+the claim that states the fold, so it is the row that names the class 5 half;
+DAT-001, DAT-002 and END-002 are the claims that state the header and its
+field meanings, and their rows name the class 2 half that closes the big endian
+reading against the real corpus.
+
 Built by reading the eight files under `tests/gates/` and taking each `#[test]`'s
 doc comment verbatim: the `claim:` line where there is one, otherwise the claim
-ids the doc comment states in prose. Nothing here is inferred.
+ids the doc comment states in prose. The `oracle:` line is the class, for the
+same reason: a test that mentions "a class 1, 2 or 3 witness" in passing
+declares nothing by it. Nothing here is inferred.
 
 ## Claim to test map
 
@@ -75,15 +101,19 @@ ids the doc comment states in prose. Nothing here is inferred.
 
 | Claim | Tests | Oracle class |
 | --- | --- | --- |
+| END-001 | `install_exe_tables.rs`::install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216 | 1 |
 | END-002 | `install_archive.rs`::dat_025_directory_and_entry_counts_are_exact | 2, 4 |
-| END-006 | `synthetic_endian.rs`::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers | 5 |
-| END-008 | `synthetic_endian.rs`::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers | 5 |
+| END-004 | `install_exe_tables.rs`::install_read_va_returns_every_table_window_from_dgroup_raw_data | 1 |
+| END-005 | `install_exe_tables.rs`::install_xp_table_holds_the_twenty_one_triangular_numbers_indexed_by_level | 1 |
+| END-006 | `install_exe_tables.rs`::install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216; `synthetic_endian.rs`::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers | 1; 5 |
+| END-007 | `install_exe_tables.rs`::install_xp_table_holds_the_twenty_one_triangular_numbers_indexed_by_level | 1 |
+| END-008 | `install_exe_tables.rs`::install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216; `synthetic_endian.rs`::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers | 1; 5 |
 | END-010 | `synthetic_endian.rs`::synthetic_no_default_order_and_no_conversion_between_the_layers | 6 |
 | END-011 | `synthetic_endian.rs`::synthetic_no_default_order_and_no_conversion_between_the_layers | 6 |
 | END-012 | `synthetic_endian.rs`::synthetic_no_default_order_and_no_conversion_between_the_layers | 6 |
 | END-013 | `synthetic_endian.rs`::synthetic_no_default_order_and_no_conversion_between_the_layers | 6 |
 | END-014 | `synthetic_endian.rs`::synthetic_each_read_consumes_exactly_its_own_width; `synthetic_endian.rs`::synthetic_remaining_falls_by_the_width_of_every_mixed_read; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 5; 6; 5; 5; 5; 5; 5; 5 |
-| END-015 | `synthetic_endian.rs`::synthetic_asset_layer_folds_the_most_significant_byte_first; `synthetic_endian.rs`::synthetic_executable_layer_folds_the_least_significant_byte_first; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 5; 5; 5; 5; 5; 5; 5; 5 |
+| END-015 | `install_exe_tables.rs`::install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216; `synthetic_endian.rs`::synthetic_asset_layer_folds_the_most_significant_byte_first; `synthetic_endian.rs`::synthetic_executable_layer_folds_the_least_significant_byte_first; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 1; 5; 5; 5; 5; 5; 5; 5; 5 |
 | END-016 | `synthetic_endian.rs`::synthetic_signed_reads_reinterpret_the_folded_bits_rather_than_convert; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement | 5; 5; 5 |
 | END-017 | `synthetic_endian.rs`::synthetic_every_read_method_refuses_a_buffer_one_byte_short; `synthetic_endian.rs`::synthetic_every_read_method_refuses_an_empty_buffer; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 5; 5; 5; 5; 5; 5; 5; 5 |
 | END-018 | `synthetic_endian.rs`::synthetic_a_failed_read_leaves_the_cursor_exactly_where_it_was; `synthetic_endian.rs`::synthetic_every_bit_flip_of_the_asset_layer_answers; `synthetic_endian.rs`::synthetic_every_bit_flip_of_the_executable_layer_answers; `synthetic_endian.rs`::synthetic_every_read_method_refuses_a_buffer_one_byte_short; `synthetic_endian.rs`::synthetic_every_read_method_refuses_an_empty_buffer; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 6; 6; 6; 5; 5; 5; 5; 5; 5; 5; 5 |
@@ -132,7 +162,7 @@ ids the doc comment states in prose. Nothing here is inferred.
 | DAT-004 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `install_archive.rs`::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen | 4, 5; 2, 4 |
 | DAT-005 | `synthetic_dat.rs`::synthetic_block_field_0_is_the_entry_count_not_the_directory_count; `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `install_archive.rs`::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen | 6; 4, 5; 2, 4 |
 | DAT-006 | `synthetic_dat.rs`::synthetic_block_field_2_is_the_trailer_width_not_the_record_size; `install_archive.rs`::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen | 6; 2, 4 |
-| DAT-007 | `install_archive.rs`::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen | 2, 4 |
+| DAT-007 | `install_archive.rs`::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen | 2, 5 |
 | DAT-008 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `install_archive.rs`::dat_022_every_block_chain_consumes_exactly_its_compressed_size | 4, 5; 2, 4 |
 | DAT-009 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size | 4, 5; 2† |
 | DAT-010 | `synthetic_dat.rs`::synthetic_lookup_is_by_uppercased_path_and_an_absent_path_is_not_an_error; `install_archive.rs`::dat_029_real_lookups_return_the_measured_entries | 6; 2† |
@@ -212,24 +242,20 @@ ids the doc comment states in prose. Nothing here is inferred.
 
 ## Claims with no test
 
-36 of the 143 claim ids in `docs/spec/*.md` are cited by no gate test. Each reason below is why, not an excuse.
+25 of the 143 claim ids in `docs/spec/*.md` are cited by no gate test. Each reason below is why, not an excuse.
 
 | Claim | Why there is no test |
 | --- | --- |
 | DAT-031 | UNVERIFIED. A construction rule: uppercasing belongs to the caller, not to the parser. The behaviour is graded under DAT-010 (`synthetic_dat.rs::synthetic_lookup_is_by_uppercased_path_and_an_absent_path_is_not_an_error`), which cites the wrong id for this mandate. Covered in substance, cited under DAT-010. |
 | DAT-032 | UNVERIFIED. Same construction rule as DAT-031: exact match against the stored uppercase path. Graded under DAT-010, cited there. |
-| END-001 | UNVERIFIED, lowered by the traceability gate. A scoping claim: two layers exist, asset big-endian and executable little-endian. The class 1 witness is `install_exe_tables.rs::install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216`, which folds the same four bytes through both readers and gets 1 and 16,777,216. That test carries EXETBL-013 and not END-001, so no oracle class 1, 2 or 3 test carries this claim. Restoring the tag needs one claim id in that test's doc attribute. |
 | END-003 | CONFIRMED IN COMMUNITY EDITION ONLY. The asset-layer extension list. No crate in this phase reads `.PRO`, `.FRM`, `.MAP`, `.GCD`, `.AAF` or `.INT`; the asset layer has no reader yet, so nothing can grade the list. |
-| END-004 | UNVERIFIED, lowered by the traceability gate. Which tables live in the executable layer. `install_exe_tables.rs` proves every one of them under EXETBL-003 to EXETBL-009 and never cites END-004. The class 1 witness is `install_exe_tables.rs::install_read_va_returns_every_table_window_from_dgroup_raw_data`, which carries EXETBL-002. Restoring the tag needs one claim id in that test's doc attribute. |
-| END-005 | UNVERIFIED, lowered by the traceability gate. The XP thresholds table is 21 i32 at 0x5082D0. The class 1 witness is `install_exe_tables.rs::install_xp_table_holds_the_twenty_one_triangular_numbers_indexed_by_level`, which proves exactly this under EXETBL-009 and EXETBL-015. Restoring the tag needs one claim id in that test's doc attribute. |
-| END-007 | UNVERIFIED, lowered by the traceability gate. The unscaled triangular numbers and the 1,000 scale. The class 1 witness is `install_exe_tables.rs::install_xp_table_holds_the_twenty_one_triangular_numbers_indexed_by_level`, which proves the table under EXETBL-015; the scale itself is ledger row EXETBL-C821, tagged UNVERIFIED there because the bytes do not say who multiplies. Restoring the tag needs one claim id in that test's doc attribute. |
-| END-009 | UNVERIFIED, lowered by the traceability gate. A crate-boundary mandate: no crate outside the two endian crates reads an integer by another route. Its natural test is a dependency-graph or forbidden-import scan over `crates/*`, which is not a gate test in this phase, and no oracle class in the guide describes a fact about the source tree. |
+| END-009 | UNVERIFIED. A crate-boundary mandate: no crate outside the two endian crates reads an integer by another route. Its natural test is a dependency-graph or forbidden-import scan over `crates/*`, which is not a gate test in this phase, and no oracle class in the guide describes a fact about the source tree. |
 | END-021 | UNVERIFIED. A construction rule: one error enum per crate, a closed set, matched with no wildcard arm. `synthetic_endian.rs` grades what the variants carry (END-022, END-023) but never the per-crate enum count. Coverable by a `const _: () = ...` assertion; not written. |
 | END-025 | CONFIRMED IN COMMUNITY EDITION ONLY. The `.ACM` 14-byte little-endian header. No crate in this phase reads an audio file; the spec itself queues the byte check. |
 | END-026 | CONFIRMED IN COMMUNITY EDITION ONLY. The `.MVE` 18-byte magic. No crate in this phase reads a movie; the spec itself queues the byte check. |
 | END-027 | UNVERIFIED. `.LIP` layout, with the community reader diverging at 0x14. The spec directs the reader to isolate it and not read a shipped `.LIP` until the layout is settled. No test can exist before the layout is. |
-| END-028 | UNVERIFIED, lowered by the traceability gate. The 30,051-byte big-endian save header. No save crate exists in this phase, so no gate test reads a save file; the bytes are in the install and a class 2 test through the `fo1-tests` harness could witness them once a save reader exists. |
-| END-029 | UNVERIFIED, lowered by the traceability gate. Save block 20, the world map, 899 + 105 + 24 closing on 1,028. No save crate exists in this phase, so no gate test reads a save file; the bytes are in the install and a class 2 test through the `fo1-tests` harness could witness them once a save reader exists. |
+| END-028 | CONFIRMED AGAINST ORIGINAL BINARY, exempt. The 30,051-byte big-endian save header. No save crate exists in this phase, so no gate test reads a save file; the bytes are in the install and a class 2 test through the `fo1-tests` harness could witness them once a save reader exists. The exemption is in the section below. |
+| END-029 | CONFIRMED AGAINST ORIGINAL BINARY, exempt. Save block 20, the world map, 899 + 105 + 24 closing on 1,028. No save crate exists in this phase, so no gate test reads a save file; the bytes are in the install and a class 2 test through the `fo1-tests` harness could witness them once a save reader exists. The exemption is in the section below. |
 | END-030 | UNVERIFIED. Save block 23, whose element type the spec explicitly refuses to fix. The spec directs the reader to a function in the executable first. A test would have to pick a width the spec forbids picking. |
 | END-031 | CONFIRMED IN COMMUNITY EDITION ONLY. The port save format, which is this project's own file. No save crate and no port format exists in this phase. |
 | END-032 | VERSION DIFFERENCE IDENTIFIED. A statement that the guide's single big-endian rule is superseded by correction C1. It records a decision, not a behaviour, so it has nothing to grade. |
@@ -253,32 +279,63 @@ Six claims are listed here. Two carry a test, so each has a row in the map above
 | Claim | What is still missing |
 | --- | --- |
 | DAT-021 | Confirmed. The rule is graded by `synthetic_dat.rs::synthetic_a_stored_region_is_bounded_by_the_compressed_size_not_the_uncompressed_one`, and the corpus is graded by `install_archive.rs::dat_021_the_stored_extent_is_bounded_by_the_compressed_size`, which walks all 25,243 entries of both archives, asserts that 0 of them have a stored extent past the end of their archive, and asserts that exactly the 7 entries the spec names have a decoded extent past it, each with its exact overrun in bytes. The corpus test is written. The ledger holds the measured consequence (DAT-C120: 0 entries past EOF; DAT-C110: the uncompressed bound fails by 39038). DAT-C110 is the single source of the 39,038-byte overrun; `docs/spec/dat.md` and the test's `39_038` literal repeat it. What is still missing is a witness that the three copies of the number agree: no test compares the spec prose or the test literal against DAT-C110. |
-| DAT-030 | Confirmed. Three members of the interface are graded, and the corpus grades the whole surface over the real archives. `synthetic_dat.rs::synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at` asserts the whole `DatError::Truncated { at }` value against the byte position the root header layout fixes, `synthetic_dat.rs::synthetic_the_archive_reports_the_label_it_was_parsed_under` asserts that the archive carries the label `parse` was handed, and `synthetic_dat.rs::synthetic_every_error_variant_names_what_went_wrong` asserts that every variant of the error type renders a message of its own that names the quantity it is about. What is still missing is a compile-time signature assertion of the kind `synthetic_endian.rs` carries in its `const _` block: the three tests pin the error's byte position, the origin label and each variant's message, not the field names and types of the whole shape of the interface. |
+| DAT-030 | UNVERIFIED, lowered by the spec lane. The claim is an interface: Rust types, signatures and error variants, and an interface is a decision this port makes, so no byte of the archive can witness it. Three members of the interface are graded anyway, and the corpus grades the whole surface over the real archives. `synthetic_dat.rs::synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at` asserts the whole `DatError::Truncated { at }` value against the byte position the root header layout fixes, `synthetic_dat.rs::synthetic_the_archive_reports_the_label_it_was_parsed_under` asserts that the archive carries the label `parse` was handed, and `synthetic_dat.rs::synthetic_every_error_variant_names_what_went_wrong` asserts that every variant of the error type renders a message of its own that names the quantity it is about. All three are class 5, which is why the claim needs no class 1, 2 or 3 witness. What is still missing is a compile-time signature assertion of the kind `synthetic_endian.rs` carries in its `const _` block: the three tests pin the error's byte position, the origin label and each variant's message, not the field names and types of the whole shape of the interface. |
 | DAT-031 | UNVERIFIED. Missing witness: a test that cites the claim. The behaviour is graded under DAT-010 by `synthetic_dat.rs::synthetic_lookup_is_by_uppercased_path_and_an_absent_path_is_not_an_error`, which cites the wrong id for this mandate. |
 | DAT-032 | UNVERIFIED. Missing witness: a test that cites the claim. Same construction rule as DAT-031: exact match against the stored uppercase path, graded under DAT-010 and cited there. |
 | DAT-033 | UNVERIFIED, added by an orchestrator ruling. No byte evidence establishes a zero field 0 as malformed. The behaviour is asserted by `synthetic_dat.rs::synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted`, which annotates `claim: DAT-033, DAT-034`. |
 | DAT-034 | UNVERIFIED, added by an orchestrator ruling. Same status and same citation as DAT-033. |
 
-Three more claims carry a test and still have no class 1, 2 or 3 witness: END-014,
-END-015 and END-016. Their rows name the class 5 and class 6 synthetic endian
-tests, which pin the widths, the fold order and the signed reinterpretation
-against hand computed vectors, and the executable layer's class 1 gate file does
-not cite them. `docs/spec/endian.md` carries the reason and names the class 1
-test that would settle each.
+Two more claims carry a test and still have no class 1, 2 or 3 witness: END-014 and
+END-016. Their rows name the class 5 and class 6 synthetic endian tests, which
+pin the widths and the signed reinterpretation against hand computed vectors,
+and the executable layer's class 1 gate file does not cite them: the original's
+tables hold no `u8`, `u16` or `i16` field and no negative i32, so no byte of it
+witnesses either claim. `docs/spec/endian.md` carries the reason for each.
 
 ## Orchestrator-ruled claims
 
 DAT-031, DAT-032, DAT-033 and DAT-034 were added to `docs/spec/dat.md` by an orchestrator ruling rather than by a measurement. All four carry `UNVERIFIED`: DAT-031 and DAT-032 are construction rules about who uppercases and how a lookup matches, DAT-033 and DAT-034 record that a zero field 0 and a zero-length name parse, with no byte evidence that either is malformed. `check_trace.sh` therefore does not demand a class 1, 2 or 3 test for them, and none is written. The behaviour of DAT-033 and DAT-034 is asserted by `synthetic_dat.rs::synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted`, which annotates `claim: DAT-033, DAT-034`.
 
+## The exemptions
+
+An exemption is a named thing the gate would otherwise reject, with a reason.
+The entries live in the section below, in this PROTECTED file, so the owner reads
+every one of them. One entry per line, in this shape:
+
+    <key> :: <reason>
+
+The entry is read as the first `::` separator and the reason is everything after
+it, so a reason may hold a `::` of its own. An entry that is not in that shape,
+or that has an empty key or an empty reason, is malformed, and a malformed
+entry fails the check: an approval nobody can read is not an approval.
+
+There are two kinds of key:
+
+- a claim id, exempt from the witness rule: the claim is
+  `CONFIRMED AGAINST ORIGINAL BINARY` and no test in oracle class 1, 2 or 3 can
+  witness it yet;
+- a spec location, `file:line`, exempt from the unattributed tag rule: a whole
+  line evidence tag that no section of that file claims.
+
+An exemption that exempts nothing is a stale record, and a stale record fails
+the check too: it exempts a claim that is not confirmed, or a tag that is not
+there.
+
+## Exemptions
+
+END-028 :: the 30,051-byte big-endian save header. No save crate exists in this phase, so no gate test reads a save file and no oracle class 1, 2 or 3 test can witness the claim. The bytes are in the install, and a class 2 test through the `fo1-tests` harness can witness them once a save reader exists. The claim keeps its `CONFIRMED AGAINST ORIGINAL BINARY` tag because the guide records the binary confirming the constants, and the gate reads this entry instead of a witness that cannot exist yet.
+END-029 :: save block 20, the world map, 899 + 105 + 24 closing on 1,028. No save crate exists in this phase, so no gate test reads a save file and no oracle class 1, 2 or 3 test can witness the claim. The bytes are in the install, and a class 2 test through the `fo1-tests` harness can witness them once a save reader exists. The claim keeps its `CONFIRMED AGAINST ORIGINAL BINARY` tag because the guide records the binary confirming the constants, and the gate reads this entry instead of a witness that cannot exist yet.
+docs/spec/dat.md:899 :: the "Source disagreements" section of `docs/spec/dat.md` states a measured fact about the guide's own checklist, not a claim of this port, and its evidence tag names no claim. The section is `docs/spec/dat.md`'s to word, and this entry records that the tag is there on purpose until it is.
+
 ## Totals
 
 | Subsystem | Claims in spec | Mapped | No test |
 | --- | --- | --- | --- |
-| END | 34 | 18 | 16 |
+| END | 34 | 22 | 12 |
 | LZSS | 25 | 23 | 2 |
 | DAT | 34 | 32 | 2 |
 | EXETBL | 17 | 17 | 0 |
 | HOLD | 33 | 24 | 9 |
-| **all** | **143** | **107** | **36** |
+| **all** | **143** | **118** | **25** |
 
 139 tests across eight gate files: `synthetic_endian.rs` 22, `synthetic_lzss.rs` 18, `synthetic_dat.rs` 23, `synthetic_exe.rs` 31, `install_archive.rs` 14, `install_plaintext.rs` 6, `install_exe_tables.rs` 23, `install_holdout.rs` 2.
