@@ -620,41 +620,55 @@ EOF
 # written note that explains why, and the owner reviews the note. A pure
 # refactor that changes no test is exempt."
 #
-# The unit of judgement is the TEST, not the FILE. A file is one line in a
-# diff, so a file of a hundred tests that changed once and passed on the base
-# would have hidden the fact that none of its hundred tests was proved. The
-# step therefore works like this:
+# The unit of judgement is the TEST, and a test is identified by the TARGET it
+# belongs to AND its own name. The gate reads EVERY test target of the
+# workspace, not only the gate files: the [[test]] targets of the root
+# package, the unit test target of every crate, and the auto-discovered
+# integration targets. Two tests that share a name in two targets are two
+# different tests, and a change to either of them must be seen.
 #
-#   1. the test list of a target comes from the test binary itself, from
-#      `cargo test --test <target> -- --list`, taken at the base and at the
-#      head;
-#   2. a test is ADDED when the head lists it and the base does not, and
+# The step therefore works like this:
+#
+#   1. the test targets are read from the root Cargo.toml and the crate
+#      manifests, and every changed file is matched to the target that holds
+#      its tests;
+#   2. the test list of a target comes from the test binary itself, from
+#      `cargo test <selector> -- --list`, taken at the base and at the head;
+#   3. a test is ADDED when the head lists it and the base does not, and
 #      CHANGED when both list it and its own source differs between the two;
-#   3. every added or changed test is run against the BASE implementation, in
-#      a worktree of the base ref, with the head's test file copied over, and
+#   4. every added or changed test is run against the BASE implementation, in
+#      a worktree of the base ref, with the head's test code copied in, and
 #      it must fail there: that is what proves the change;
-#   4. a test that passes on the base cannot prove the change, so it must
+#   5. a test that passes on the base cannot prove the change, so it must
 #      carry either a recorded mutation kill or an exemption, and both live in
 #      docs/fail-before-notes.md;
-#   5. every added or changed test must pass on the head.
+#   6. every added or changed test must pass on the head.
 #
 # The set of changed tests is computed BEFORE any run, and every member of it
 # must end with a verdict. A test that is silently forgotten fails the step.
 #
-# The base tree is a throwaway worktree of BASE_REF with HEAD's version of the
-# changed test file copied into it, and HEAD's [[test]] entry for that file
-# added to the base Cargo.toml when the base does not have it. One worktree
-# serves every changed file: the base is built once and the files are copied
-# in one at a time. The base has its own target directory, so a base build
-# cannot poison the head build, and the whole worktree is removed afterwards,
-# build output and all.
+# THE BASE TREE. One worktree of the base ref serves every file, and it is
+# RESTORED to the base ref before every file's run, so one file's head copy
+# can never reach another file's base. What the tree holds for a file's run:
 #
-# A mutation record is checked, not trusted. The record names one line of the
-# implementation and the line that replaces it; the gate applies that change
-# to the head implementation in a second worktree and runs the named test. A
-# record whose test still passes with the mutation applied is a FALSE record,
-# and a false record fails the step: a record nobody checks is a piece of
-# prose, and prose is not a proof.
+#   - the BASE version of every file that carries the implementation under
+#     test. The base is the base, or the test proves nothing: the base run
+#     must measure the base implementation, not the head's.
+#   - the HEAD version of the file under judgement, or of its cfg(test) region
+#     when the same file also carries the implementation. The test is the
+#     change under judgement.
+#   - the HEAD version of the changed files of the dev-only packages the
+#     judged package depends on, which are the harness the test needs to
+#     build. A file the test NEEDS must not be left at the base, or a compile
+#     error in the base would be an artefact of the copy rather than the
+#     base's own fault.
+#
+# A base that does not build is REPORTED and fails the step: the run measured
+# nothing, and nothing reports success it has not measured. A compile error
+# that comes from the head's own test code is the guide's case ("a compile
+# error counts as a failure"), and it is reported as a verdict of its own,
+# with the compiler's first lines, so it is never absorbed silently into
+# "the test failed on the base".
 
 NOTES_FILE='docs/fail-before-notes.md'
 BASE_WT=''
@@ -699,7 +713,14 @@ cat >"$GATE_TOOLS" <<'PYTHON'
 
 names FILE            one line per test: name, first line, last line, digest
 rest FILE             the code of the file that lies outside every test
+rest-in-tests FILE    the same, but only inside the cfg(test) regions
 mutate FILE FROM TO   replace the one line whose text is FROM with TO
+splice BASE HEAD      the base file with the head's cfg(test) regions
+cfg-tests FILE        the number of inline cfg(test) modules in the file
+members MANIFEST      the workspace members of a manifest
+tests MANIFEST        the [[test]] blocks of a manifest: name and path
+package-name MANIFEST the name of the package a manifest declares
+deps MANIFEST         the path dependencies of a manifest: name and path
 """
 import hashlib
 import re
@@ -709,6 +730,15 @@ MARKER = re.compile(r'^[ \t]*#\[test\]')
 FNNAME = re.compile(
     r'^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?(?:async[ \t]+)?(?:unsafe[ \t]+)?'
     r'fn[ \t]+([A-Za-z_][A-Za-z0-9_]*)')
+CFGATTR = re.compile(r'^[ \t]*#\[cfg\([^)]*\)\][ \t]*$')
+MODITEM = re.compile(
+    r'^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?mod[ \t]+([A-Za-z_][A-Za-z0-9_]*)'
+    r'[ \t]*(\{|;)')
+
+
+def read_text(path):
+    with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+        return handle.read()
 
 
 def blank(src):
@@ -768,7 +798,7 @@ def blank(src):
             continue
         if c == '"':
             e = i + 1
-            while e < n:
+            while i < n:
                 if src[e] == '\\':
                     e += 2
                     continue
@@ -856,40 +886,230 @@ def tests_of(src):
     return found
 
 
+def cfg_test_blocks(src):
+    """The inline `#[cfg(test)] mod NAME { ... }` blocks of a file.
+
+    One entry per block: the module name, the first line and the last line
+    of the block, the attribute included. A `#[cfg(test)] mod NAME;`
+    declaration is not a block: its tests live in another file, and that file
+    is judged on its own.
+    """
+    code = blank(src)
+    lines = src.split('\n')
+    code_lines = code.split('\n')
+    n = len(lines)
+    blocks = []
+    i = 0
+    while i < n:
+        if not CFGATTR.match(lines[i]) or 'test' not in lines[i]:
+            i += 1
+            continue
+        attr = i
+        j = i + 1
+        while j < n:
+            stripped = lines[j].strip()
+            if stripped == '' or stripped.startswith('//') or stripped.startswith('#['):
+                j += 1
+                continue
+            break
+        if j >= n:
+            break
+        m = MODITEM.match(lines[j])
+        if not m:
+            i = attr + 1
+            continue
+        if m.group(2) == ';':
+            i = j + 1
+            continue
+        body = '\n'.join(code_lines[j:])
+        k = body.find('{')
+        depth = 0
+        end = -1
+        for p in range(k, len(body)):
+            if body[p] == '{':
+                depth += 1
+            elif body[p] == '}':
+                depth -= 1
+                if depth == 0:
+                    end = p
+                    break
+        if end < 0:
+            i = attr + 1
+            continue
+        last = j + body.count('\n', 0, end)
+        blocks.append((m.group(1), attr + 1, last + 1))
+        i = last + 1
+    return blocks
+
+
+def rest_of(src, inside_tests_only):
+    """The code of a file that lies outside every test.
+
+    With inside_tests_only the code outside the cfg(test) regions is left
+    out: a crate's implementation is not the file's shared test code, and a
+    change to it must not be charged to every test of the file.
+    """
+    covered = set()
+    for _name, first, last, _digest in tests_of(src):
+        for number in range(first, last + 1):
+            covered.add(number)
+    inside = set()
+    for _name, first, last in cfg_test_blocks(src):
+        for number in range(first, last + 1):
+            inside.add(number)
+    rest = []
+    blocks = cfg_test_blocks(src)
+    for number, line in enumerate(src.split('\n'), start=1):
+        if number in covered:
+            continue
+        if inside_tests_only and blocks and number not in inside:
+            continue
+        stripped = line.strip()
+        if stripped == '':
+            continue
+        if stripped.startswith('//'):
+            continue
+        rest.append(stripped)
+    return rest
+
+
+def splice(base_src, head_src):
+    """The base source with the head's cfg(test) regions.
+
+    The base's implementation stays the base's: the base run must measure the
+    base implementation. The head's test code is what the change under
+    judgement is.
+    """
+    base_lines = base_src.split('\n')
+    head_lines = head_src.split('\n')
+    head_blocks = cfg_test_blocks(head_src)
+    if not head_blocks:
+        return None
+    base_blocks = {}
+    for name, first, last in cfg_test_blocks(base_src):
+        base_blocks[name] = (first, last)
+    edits = []
+    for name, h_first, h_last in head_blocks:
+        text = head_lines[h_first - 1:h_last]
+        if name in base_blocks:
+            b_first, b_last = base_blocks[name]
+        else:
+            b_first, b_last = len(base_lines) + 1, len(base_lines)
+        edits.append((b_first, b_last, text))
+    out = list(base_lines)
+    for b_first, b_last, text in sorted(edits, key=lambda e: -e[0]):
+        out[b_first - 1:b_last] = text
+    return '\n'.join(out)
+
+
+def manifest_tables(text):
+    """The tables of a manifest: the kind, the name and the body lines."""
+    tables = []
+    kind = None
+    name = None
+    body = []
+    for line in text.split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('[[') and stripped.endswith(']]'):
+            if name is not None:
+                tables.append((kind, name, body))
+            kind = 'array'
+            name = stripped[2:-2].strip()
+            body = []
+        elif stripped.startswith('[') and stripped.endswith(']'):
+            if name is not None:
+                tables.append((kind, name, body))
+            kind = 'table'
+            name = stripped[1:-1].strip()
+            body = []
+        elif name is not None:
+            body.append(line)
+    if name is not None:
+        tables.append((kind, name, body))
+    return tables
+
+
+def table_value(body, key):
+    """The value of one key of a table body, without its quotes."""
+    for line in body:
+        stripped = line.strip()
+        if '=' not in stripped:
+            continue
+        left, _, right = stripped.partition('=')
+        if left.strip() != key:
+            continue
+        return right.strip().strip('"').strip("'")
+    return None
+
+
+def table_array(body, key):
+    """The items of one array key of a table body."""
+    items = []
+    inside = False
+    for line in body:
+        stripped = line.strip()
+        if not inside:
+            if '=' not in stripped:
+                continue
+            left, _, right = stripped.partition('=')
+            if left.strip() != key:
+                continue
+            inside = True
+            stripped = right.strip()
+        if stripped.startswith(']'):
+            break
+        for item in re.findall(r'"([^"]*)"', stripped):
+            items.append(item)
+    return items
+
+
+def inline_path(value):
+    """The path of an inline table, or the empty string."""
+    if not value:
+        return ''
+    m = re.search(r'path\s*=\s*"([^"]*)"', value)
+    if m:
+        return m.group(1)
+    return ''
+
+
 def main(argv):
     if len(argv) < 3:
-        sys.stderr.write('usage: gate_tools.py names|mutate ...\n')
+        sys.stderr.write('usage: gate_tools.py names|rest|... ...\n')
         return 2
     mode = argv[1]
+    path = argv[2]
     if mode == 'names':
-        path = argv[2]
-        with open(path, 'r', encoding='utf-8', errors='replace') as handle:
-            src = handle.read()
+        src = read_text(path)
         for name, first, last, digest in tests_of(src):
             print('%s\t%d\t%d\t%s' % (name, first, last, digest))
         return 0
     if mode == 'rest':
-        path = argv[2]
-        with open(path, 'r', encoding='utf-8', errors='replace') as handle:
-            src = handle.read()
-        covered = set()
-        for _name, first, last, _digest in tests_of(src):
-            for number in range(first, last + 1):
-                covered.add(number)
-        rest = []
-        for number, line in enumerate(src.split('\n'), start=1):
-            if number in covered:
-                continue
-            stripped = line.strip()
-            if stripped == '':
-                continue
-            if stripped.startswith('//'):
-                continue
-            rest.append(stripped)
-        print('\n'.join(rest))
+        src = read_text(path)
+        print('\n'.join(rest_of(src, False)))
+        return 0
+    if mode == 'rest-in-tests':
+        src = read_text(path)
+        print('\n'.join(rest_of(src, True)))
+        return 0
+    if mode == 'cfg-tests':
+        src = read_text(path)
+        print('%d' % len(cfg_test_blocks(src)))
+        return 0
+    if mode == 'splice':
+        head_path = argv[3]
+        base_src = read_text(path)
+        head_src = read_text(head_path)
+        out = splice(base_src, head_src)
+        if out is None:
+            sys.stdout.write('NONE\n')
+            return 1
+        with open(path, 'w', encoding='utf-8', errors='surrogateescape') as handle:
+            handle.write(out)
+        sys.stdout.write('1\n')
         return 0
     if mode == 'mutate':
-        path, want, take = argv[2], argv[3], argv[4]
+        want, take = argv[3], argv[4]
         with open(path, 'r', encoding='utf-8', errors='surrogateescape') as handle:
             src = handle.read()
         lines = src.split('\n')
@@ -903,6 +1123,41 @@ def main(argv):
         with open(path, 'w', encoding='utf-8', errors='surrogateescape') as handle:
             handle.write('\n'.join(lines))
         sys.stdout.write('1\n')
+        return 0
+    if mode in ('members', 'tests', 'package-name', 'deps'):
+        text = read_text(path)
+        if mode == 'members':
+            for kind, name, body in manifest_tables(text):
+                if kind == 'table' and name == 'workspace':
+                    for item in table_array(body, 'members'):
+                        print(item)
+            return 0
+        if mode == 'tests':
+            for kind, name, body in manifest_tables(text):
+                if kind == 'array' and name == 'test':
+                    print('%s\t%s' % (table_value(body, 'name') or '',
+                                      table_value(body, 'path') or ''))
+            return 0
+        if mode == 'package-name':
+            for kind, name, body in manifest_tables(text):
+                if kind == 'table' and name == 'package':
+                    value = table_value(body, 'name')
+                    if value:
+                        print(value)
+                        return 0
+            return 1
+        for kind, name, body in manifest_tables(text):
+            if kind == 'table' and name in ('dependencies', 'dev-dependencies',
+                                            'build-dependencies'):
+                for line in body:
+                    stripped = line.strip()
+                    if '=' not in stripped or stripped.startswith('#'):
+                        continue
+                    left, _, right = stripped.partition('=')
+                    key = left.strip()
+                    if not key or not re.match(r'^[A-Za-z0-9_-]+$', key):
+                        continue
+                    print('%s\t%s' % (key, inline_path(right.strip())))
         return 0
     sys.stderr.write('unknown mode %s\n' % mode)
     return 2
@@ -923,34 +1178,6 @@ for candidate in python python3; do
         fi
     fi
 done
-
-# The [[test]] target name HEAD's Cargo.toml gives this test file.
-head_target_name() {
-    git show HEAD:Cargo.toml 2>/dev/null | awk -v want="$1" '
-        /^\[\[test\]\]/ { blk = 1; nm = ""; pt = ""; next }
-        /^\[/ { blk = 0 }
-        blk && $1 == "name" { nm = $3; gsub(/"/, "", nm) }
-        blk && $1 == "path" { pt = $3; gsub(/"/, "", pt) }
-        blk && pt != "" && pt == want { print nm; exit }
-    '
-}
-
-# The [[test]] block HEAD's Cargo.toml gives this test file.
-head_test_block() {
-    git show HEAD:Cargo.toml 2>/dev/null | awk -v want="$1" '
-        /^\[\[test\]\]/ {
-            if (blk != "") { if (found) print blk }
-            blk = $0 "\n"; found = 0; next
-        }
-        blk == "" { next }
-        /^[ \t]*$/ { next }
-        {
-            blk = blk $0 "\n"
-            if ($1 == "path") { pt = $3; gsub(/"/, "", pt); if (pt == want) found = 1 }
-        }
-        END { if (blk != "" && found) print blk }
-    '
-}
 
 # Did this run fail to compile? A compile error is not a test failure, and a
 # run that never compiled has measured nothing.
@@ -1014,29 +1241,6 @@ read_notes() {
     ' "$NOTES_FILE"
 }
 
-# The outcome of one test run: compile error, failed, passed, ignored or
-# absent. "absent" means the run measured nothing: the test did not run at
-# all, so nothing about it is known.
-run_outcome() {
-    local out="$1" passed failed ignored
-    if is_compile_error "$out"; then
-        printf 'compile error'
-        return 0
-    fi
-    passed=$(printf '%s\n' "$out" | sed -n 's/^test result: .*\([0-9][0-9]*\) passed.*/\1/p' | tail -1)
-    failed=$(printf '%s\n' "$out" | sed -n 's/^test result: .*\([0-9][0-9]*\) failed.*/\1/p' | tail -1)
-    ignored=$(printf '%s\n' "$out" | sed -n 's/^test result: .*\([0-9][0-9]*\) ignored.*/\1/p' | tail -1)
-    if [ "${failed:-0}" -gt 0 ]; then
-        printf 'failed'
-    elif [ "${passed:-0}" -gt 0 ]; then
-        printf 'passed'
-    elif [ "${ignored:-0}" -gt 0 ]; then
-        printf 'ignored'
-    else
-        printf 'absent'
-    fi
-}
-
 # The recorded mutation kills, as tab separated fields: OK, test file, test
 # name, implementation file, the line to replace, the line that replaces it,
 # reason. A malformed entry comes back as MALFORMED.
@@ -1097,14 +1301,24 @@ read_records() {
 SOURCE_VIEW="$REPORT_DIR/source-view"
 mkdir -p "$SOURCE_VIEW"
 
-source_tests_of() {
-    # source_tests_of <ref> <path>
-    local ref="$1" path="$2" tmp
-    tmp="$SOURCE_VIEW/$(printf '%s' "$ref" | tr '/:' '__')_$(printf '%s' "$path" | tr '/' '_')"
-    if ! git show "$ref:$path" >"$tmp" 2>/dev/null; then
-        return 1
-    fi
-    "$PYTHON_BIN" "$GATE_TOOLS" names "$tmp" 2>/dev/null
+# The source view of a target: the view of every file that holds its tests.
+# One line per test: name, file, first line, last line, digest.
+target_view() {
+    # target_view <ref> <file> ...
+    local ref="$1"
+    shift
+    local f tmp name first last digest
+    for f in "$@"; do
+        tmp="$SOURCE_VIEW/src-$(printf '%s' "$ref" | tr '/:' '__')-$(printf '%s' "$f" | tr '/' '_')"
+        if ! git show "$ref:$f" >"$tmp" 2>/dev/null; then
+            continue
+        fi
+        "$PYTHON_BIN" "$GATE_TOOLS" names "$tmp" 2>/dev/null |
+            while IFS=$'\t' read -r name first last digest; do
+                [ -n "$name" ] || continue
+                printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$f" "$first" "$last" "$digest"
+            done
+    done
 }
 
 # The code of a file that lies outside every test of that file: the shared
@@ -1112,6 +1326,11 @@ source_tests_of() {
 # a comment cannot change what a test does. A change in this code reaches
 # tests the gate cannot attribute to one of them, so the gate charges it to
 # all of them.
+#
+# The code outside the cfg(test) regions is left out: a crate's
+# implementation is not the file's shared test code, and the implementation
+# under test is the BASE's, so charging it to the tests would ask every test
+# to fail on the base for a change the base does not have.
 source_rest_of() {
     # source_rest_of <ref> <path>
     local ref="$1" path="$2" tmp
@@ -1120,12 +1339,12 @@ source_rest_of() {
         printf ''
         return 0
     fi
-    "$PYTHON_BIN" "$GATE_TOOLS" rest "$tmp" 2>/dev/null
+    "$PYTHON_BIN" "$GATE_TOOLS" rest-in-tests "$tmp" 2>/dev/null
 }
 
 # Do the source view and the test binary list the same tests? A binary name
 # may carry a module path, so the last segment is what is compared. If the two
-# disagree, the gate is looking at a file it cannot see, and it fails rather
+# disagree, the gate is looking at a target it cannot see, and it fails rather
 # than judging half of it.
 same_test_set() {
     # same_test_set <binary list> <source view>
@@ -1138,7 +1357,7 @@ same_test_set() {
 # The digest of one test's own source, from the source view.
 source_digest_of() {
     # source_digest_of <source view> <test name>
-    printf '%s\n' "$1" | awk -F'\t' -v want="$2" '$1 == want { print $4; exit }'
+    printf '%s\n' "$1" | awk -F'\t' -v want="$2" '$1 == want { print $5; exit }'
 }
 
 # Every exemption must name a test that exists. An exemption whose test name
@@ -1153,7 +1372,7 @@ validate_notes() {
             bad=1
             continue
         fi
-        names=$(source_tests_of HEAD "$nfile" 2>/dev/null | cut -f1)
+        names=$(target_view HEAD "$nfile" | cut -f1)
         if printf '%s\n' "$names" | grep -qxF "$ntest"; then
             continue
         fi
@@ -1177,7 +1396,7 @@ validate_records() {
             bad=1
             continue
         fi
-        names=$(source_tests_of HEAD "$rfile" 2>/dev/null | cut -f1)
+        names=$(target_view HEAD "$rfile" | cut -f1)
         if ! printf '%s\n' "$names" | grep -qxF "$rtest"; then
             printf 'FAIL the record names the test %s, which is not in %s\n' "$rtest" "$rfile"
             bad=1
@@ -1235,12 +1454,7 @@ EOF
 check_mutation_record() {
     # check_mutation_record <test file> <test name> <impl file> <from> <to>
     local tfile="$1" tname="$2" ifile="$3" from="$4" to="$5"
-    local target hits out outcome
-    target=$(head_target_name "$tfile")
-    if [ -z "$target" ]; then
-        printf 'FAIL the record names the test file %s, which has no [[test]] entry in HEAD Cargo.toml\n' "$tfile"
-        return 1
-    fi
+    local hits out outcome
     if [ -z "$MUT_WT" ]; then
         MUT_WT="$REPO_ROOT/$REPORT_DIR/mutation-worktree"
         rm -rf "$MUT_WT"
@@ -1261,11 +1475,11 @@ check_mutation_record() {
         return 1
     fi
     out=$(cd "$MUT_WT" && CARGO_TARGET_DIR="$MUT_WT/target-mut" \
-        cargo test --release --test "$target" -- --exact "$tname" 2>&1)
+        cargo test --release "${SELECTOR[@]}" -- --exact "$tname" 2>&1)
     outcome=$(run_outcome "$out")
     if [ "$outcome" = ignored ]; then
         out=$(cd "$MUT_WT" && CARGO_TARGET_DIR="$MUT_WT/target-mut" \
-            cargo test --release --test "$target" -- --ignored --exact "$tname" 2>&1)
+            cargo test --release "${SELECTOR[@]}" -- --ignored --exact "$tname" 2>&1)
         outcome=$(run_outcome "$out")
     fi
     # The mutation is undone before the verdict is read, so the next record
@@ -1286,19 +1500,42 @@ check_mutation_record() {
     return 1
 }
 
+# The outcome of one test run: compile error, failed, passed, ignored or
+# absent. "absent" means the run measured nothing: the test did not run at
+# all, so nothing about it is known.
+run_outcome() {
+    local out="$1" passed failed ignored
+    if is_compile_error "$out"; then
+        printf 'compile error'
+        return 0
+    fi
+    passed=$(printf '%s\n' "$out" | sed -n 's/^test result: .*\([0-9][0-9]*\) passed.*/\1/p' | tail -1)
+    failed=$(printf '%s\n' "$out" | sed -n 's/^test result: .*\([0-9][0-9]*\) failed.*/\1/p' | tail -1)
+    ignored=$(printf '%s\n' "$out" | sed -n 's/^test result: .*\([0-9][0-9]*\) ignored.*/\1/p' | tail -1)
+    if [ "${failed:-0}" -gt 0 ]; then
+        printf 'failed'
+    elif [ "${passed:-0}" -gt 0 ]; then
+        printf 'passed'
+    elif [ "${ignored:-0}" -gt 0 ]; then
+        printf 'ignored'
+    else
+        printf 'absent'
+    fi
+}
+
 # Run one test of one target and say what happened to it. The output of the
 # run is written to the file the caller names, because a command substitution
 # runs in a subshell and a variable set there never reaches the caller. A
 # test that did not run is "absent", and an ignored test is "ignored":
 # neither measured anything.
 run_one_test() {
-    # run_one_test <work dir> <target dir> <target name> <test name> <log file>
-    local dir="$1" tdir="$2" target="$3" test="$4" log="$5" out verdict
+    # run_one_test <work dir> <target dir> <test name> <log file>
+    local dir="$1" tdir="$2" test="$3" log="$4" out verdict
     if [ -n "$tdir" ]; then
         out=$(cd "$dir" && CARGO_TARGET_DIR="$tdir" \
-            cargo test --release --test "$target" -- --exact "$test" 2>&1)
+            cargo test --release "${SELECTOR[@]}" -- --exact "$test" 2>&1)
     else
-        out=$(cd "$dir" && cargo test --release --test "$target" -- --exact "$test" 2>&1)
+        out=$(cd "$dir" && cargo test --release "${SELECTOR[@]}" -- --exact "$test" 2>&1)
     fi
     printf '%s\n' "$out" >"$log"
     verdict=$(run_outcome "$out")
@@ -1307,17 +1544,634 @@ run_one_test() {
 
 # The same run with --ignored, for the test that is #[ignore]d.
 run_one_test_ignored() {
-    # run_one_test_ignored <work dir> <target dir> <target name> <test name> <log file>
-    local dir="$1" tdir="$2" target="$3" test="$4" log="$5" out verdict
+    # run_one_test_ignored <work dir> <target dir> <test name> <log file>
+    local dir="$1" tdir="$2" test="$3" log="$4" out verdict
     if [ -n "$tdir" ]; then
         out=$(cd "$dir" && CARGO_TARGET_DIR="$tdir" \
-            cargo test --release --test "$target" -- --ignored --exact "$test" 2>&1)
+            cargo test --release "${SELECTOR[@]}" -- --ignored --exact "$test" 2>&1)
     else
-        out=$(cd "$dir" && cargo test --release --test "$target" -- --ignored --exact "$test" 2>&1)
+        out=$(cd "$dir" && cargo test --release "${SELECTOR[@]}" -- --ignored --exact "$test" 2>&1)
     fi
     printf '%s\n' "$out" >"$log"
     verdict=$(run_outcome "$out")
     printf '%s' "$verdict"
+}
+
+# ---------------------------------------------------------------------------
+# the test targets of the workspace
+# ---------------------------------------------------------------------------
+
+# The test targets of the tree at a ref, read from the root Cargo.toml and
+# the crate manifests. One line per target:
+#
+#   <package>	<selector>	<source file> <source file> ...
+#
+# The selector is what cargo needs to run that target's tests. The kinds of
+# target are:
+#
+#   - a [[test]] entry of a manifest: the gate test files of the root
+#     package, and any integration target a crate declares;
+#   - the unit test target of a package: the tests inside its src/ tree;
+#   - an auto-discovered integration target: a file directly under a
+#     package's tests/ directory.
+#
+# The unit test target of a crate is the one the reviewer named: the 34 tests
+# of crates/fo1-tests and crates/fo1-exe are tests of a target like any
+# other, and a change to one of them is a change to a test.
+MANIFEST_DIR="$SOURCE_VIEW/manifests"
+mkdir -p "$MANIFEST_DIR"
+
+manifest_of() {
+    # manifest_of <ref> <package dir>
+    local ref="$1" dir="$2" out
+    out="$MANIFEST_DIR/$(printf '%s' "$ref" | tr '/:' '__')-$(printf '%s' "$dir" | tr '/' '_')"
+    if [ "$dir" = "." ]; then
+        git show "$ref:Cargo.toml" >"$out" 2>/dev/null || return 1
+    else
+        git show "$ref:$dir/Cargo.toml" >"$out" 2>/dev/null || return 1
+    fi
+    printf '%s' "$out"
+}
+
+# The packages of the tree at a ref: the root package, and every workspace
+# member. One line per package: the directory and the package name.
+package_map() {
+    # package_map <ref>
+    local ref="$1" out dir mtmp name
+    out="$MANIFEST_DIR/packages-$(printf '%s' "$ref" | tr '/:' '__')"
+    : >"$out"
+    mtmp=$(manifest_of "$ref" ".") || return 1
+    name=$("$PYTHON_BIN" "$GATE_TOOLS" package-name "$mtmp")
+    printf '.\t%s\n' "$name" >>"$out"
+    for dir in $("$PYTHON_BIN" "$GATE_TOOLS" members "$mtmp"); do
+        mtmp=$(manifest_of "$ref" "$dir") || continue
+        name=$("$PYTHON_BIN" "$GATE_TOOLS" package-name "$mtmp")
+        printf '%s\t%s\n' "$dir" "$name" >>"$out"
+    done
+    printf '%s' "$out"
+}
+
+# The test targets of the tree at a ref. One line per target:
+#   <package>	<selector>	<source file> ...
+target_inventory() {
+    # target_inventory <ref>
+    local ref="$1" mtmp dir name tname tpath
+    mtmp=$(manifest_of "$ref" ".") || return 1
+    name=$("$PYTHON_BIN" "$GATE_TOOLS" package-name "$mtmp")
+    "$PYTHON_BIN" "$GATE_TOOLS" tests "$mtmp" |
+        while IFS=$'\t' read -r tname tpath; do
+            [ -n "$tname" ] || continue
+            printf '%s\t--test %s\t%s\n' "$name" "$tname" "$tpath"
+        done
+    if git cat-file -e "$ref:src/lib.rs" 2>/dev/null; then
+        printf '%s\t--lib\t' "$name"
+        git ls-tree -r --name-only "$ref" src/ 2>/dev/null | grep '\.rs$' | tr '\n' ' '
+        printf '\n'
+    fi
+    for dir in $("$PYTHON_BIN" "$GATE_TOOLS" members "$mtmp"); do
+        mtmp=$(manifest_of "$ref" "$dir") || continue
+        name=$("$PYTHON_BIN" "$GATE_TOOLS" package-name "$mtmp")
+        "$PYTHON_BIN" "$GATE_TOOLS" tests "$mtmp" |
+            while IFS=$'\t' read -r tname tpath; do
+                [ -n "$tname" ] || continue
+                printf '%s\t-p %s --test %s\t%s\n' "$name" "$name" "$tname" "$tpath"
+            done
+        if git cat-file -e "$ref:$dir/src/lib.rs" 2>/dev/null; then
+            printf '%s\t-p %s --lib\t' "$name" "$name"
+            git ls-tree -r --name-only "$ref" "$dir/src/" 2>/dev/null | grep '\.rs$' | tr '\n' ' '
+            printf '\n'
+        fi
+        for tpath in $(git ls-tree --name-only "$ref" "$dir/tests/" 2>/dev/null | grep '\.rs$'); do
+            printf '%s\t-p %s --test %s\t%s\n' "$name" "$name" \
+                "$(basename "$tpath" .rs)" "$tpath"
+        done
+    done
+}
+
+# The target that holds the tests of a file. The answer sets the globals
+# TARGET_PACKAGE, TARGET_SELECTOR and TARGET_SOURCES.
+target_for_file() {
+    # target_for_file <inventory file> <path>
+    local inv="$1" path="$2" pkg sel sources
+    while IFS=$'\t' read -r pkg sel sources; do
+        [ -n "$pkg" ] || continue
+        case " $sources " in
+            *" $path "*)
+                TARGET_PACKAGE="$pkg"
+                TARGET_SELECTOR="$sel"
+                TARGET_SOURCES="$sources"
+                return 0
+                ;;
+        esac
+    done <"$inv"
+    return 1
+}
+
+# The package directory that owns a file, or the empty string.
+package_of_file() {
+    # package_of_file <path>
+    local path="$1" dir
+    while IFS=$'\t' read -r dir _name; do
+        if [ "$dir" = "." ]; then
+            case "$path" in
+                src/*|tests/*) printf '.'; return 0 ;;
+            esac
+            continue
+        fi
+        case "$path" in
+            "$dir"/*) printf '%s' "$dir"; return 0 ;;
+        esac
+    done <"$PACKAGE_MAP"
+    return 1
+}
+
+# The name of the package of a directory.
+package_name_of_dir() {
+    # package_name_of_dir <dir>
+    awk -F'\t' -v want="$1" '$1 == want { print $2; exit }' "$PACKAGE_MAP"
+}
+
+# The dev-only band of a package, from tools/layers.txt. The band says
+# whether a crate is the proof (the reference decoders, the gate test host)
+# or the code being proved.
+band_of_package() {
+    awk -v want="$1" '$1 ~ /^[0-9]+$/ && $2 == want { print $1; exit }' tools/layers.txt
+}
+
+# The directories the package of a directory depends on, by path.
+package_deps() {
+    # package_deps <dir>
+    local dir="$1" mtmp dep dpath
+    mtmp=$(manifest_of HEAD "$dir") || return 0
+    "$PYTHON_BIN" "$GATE_TOOLS" deps "$mtmp" |
+        while IFS=$'\t' read -r dep dpath; do
+            [ -n "$dpath" ] || continue
+            printf '%s\n' "$dpath"
+        done
+}
+
+# The full binary name of a test function, from the target's test list. The
+# name is the function's own name, and the target's list gives it with the
+# module path the binary uses. A name the list holds twice is ambiguous:
+# the gate cannot tell the two tests apart, and it says so rather than
+# guessing which one changed.
+full_test_name() {
+    # full_test_name <binary list> <function name> -> the full name
+    local list="$1" want="$2" count full
+    count=$(printf '%s\n' "$list" | sed 's/.*:://' | grep -cxF "$want" || true)
+    if [ "${count:-0}" -ne 1 ]; then
+        printf ''
+        return 1
+    fi
+    full=$(printf '%s\n' "$list" | awk -v want="$want" '
+        { n = $0; sub(/.*::/, "", n); if (n == want) { print $0; exit } }')
+    printf '%s' "$full"
+}
+
+# The [[test]] block the HEAD manifest gives a test file. It is the entry
+# the base needs when the base does not have the target yet.
+head_test_block() {
+    # head_test_block <package dir> <test file path>
+    local dir="$1" want="$2" text
+    if [ "$dir" = "." ]; then
+        text=$(git show HEAD:Cargo.toml 2>/dev/null)
+    else
+        text=$(git show "HEAD:$dir/Cargo.toml" 2>/dev/null)
+    fi
+    printf '%s\n' "$text" | awk -v want="$want" '
+        /^\[\[test\]\]/ {
+            if (blk != "") { if (found) print blk }
+            blk = $0 "\n"; found = 0; next
+        }
+        blk == "" { next }
+        /^[ \t]*$/ { next }
+        {
+            blk = blk $0 "\n"
+            if ($1 == "path") { pt = $3; gsub(/"/, "", pt); if (pt == want) found = 1 }
+        }
+        END { if (blk != "" && found) print blk }
+    '
+}
+
+# The base manifest must declare the target the file under judgement belongs
+# to, or the base cannot build it and the base run measures nothing.
+ensure_base_target() {
+    # ensure_base_target <package dir> <test file> <selector>
+    local dir="$1" rel="$2" sel="$3" manifest block
+    case "$sel" in
+        *--test*) ;;
+        *) return 0 ;;
+    esac
+    if [ "$dir" = "." ]; then
+        manifest="$BASE_WT/Cargo.toml"
+    else
+        manifest="$BASE_WT/$dir/Cargo.toml"
+    fi
+    [ -f "$manifest" ] || return 0
+    if grep -q "path = \"$rel\"" "$manifest" 2>/dev/null; then
+        return 0
+    fi
+    block=$(head_test_block "$dir" "$rel")
+    if [ -n "$block" ]; then
+        printf '\n%s\n' "$block" >>"$manifest"
+        printf '  the base manifest of %s gained the head [[test]] entry of %s\n' "$dir" "$rel"
+    fi
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# the run of one file
+# ---------------------------------------------------------------------------
+
+# Judge every changed test of one file. The file's tests are run against the
+# base implementation, in the base worktree, and against the head, here.
+#
+# The globals the helpers read: SELECTOR (the cargo selector of the target),
+# HEAD_VIEW, BASE_VIEW, HEAD_LIST, BASE_LIST (the target's source views and
+# test lists), and the counters STEP8_FAIL and STEP8_SKIP.
+judge_file() {
+    local rel="$1"
+    local pkg sel sources jdir jname jband base_has_file
+    local head_list base_list head_view base_view
+    local full digest b_digest count
+    local -a selector
+
+    if ! target_for_file "$HEAD_INV" "$rel"; then
+        return 0
+    fi
+    pkg="$TARGET_PACKAGE"
+    sel="$TARGET_SELECTOR"
+    sources="$TARGET_SOURCES"
+    read -r -a selector <<<"$sel"
+    SELECTOR=("${selector[@]}")
+
+    jdir=$(package_of_file "$rel") || jdir='.'
+    jname=$(package_name_of_dir "$jdir")
+    jband=$(band_of_package "$jname")
+    base_has_file=1
+    git cat-file -e "$BASE_REF:$rel" 2>/dev/null || base_has_file=0
+
+    # The base tree is restored to the base ref before every file's run, so
+    # one file's head copy can never reach another file's base. The restore
+    # is the answer to the reviewer's M1: the base worktree is restored to
+    # the base ref before each file's run.
+    git -C "$BASE_WT" checkout -- . >/dev/null 2>&1
+    git -C "$BASE_WT" clean -fd >/dev/null 2>&1
+    # The base may not have the [[test]] entry of a target that is new at the
+    # head. The head's entry is added so that the base can build and list
+    # it.
+    ensure_base_target "$jdir" "$rel" "$sel"
+
+    # The test list of the target, at the head and at the base. The lists
+    # come from the test binaries themselves, so they are the lists of the
+    # tests that RUN, not a grep of the source. The base's list is read from
+    # the restored base tree, before any head copy is applied, so it is the
+    # base's own list.
+    if ! head_list=$(read_target_cache "$pkg" "$sel" head-list); then
+        local head_out head_status
+        head_out=$(cargo test --release "${selector[@]}" -- --list 2>&1)
+        head_status=$?
+        if [ "$head_status" -ne 0 ]; then
+            printf 'FAIL the head of the target %s does not build, so its test list cannot be read\n' "$pkg"
+            printf '%s\n' "$head_out" | tail -12
+            STEP8_FAIL=1
+            return 0
+        fi
+        head_list=$(printf '%s\n' "$head_out" | sed -n 's/^\(.*\): test$/\1/p')
+        write_target_cache "$pkg" "$sel" head-list "$head_list"
+    fi
+    if ! base_list=$(read_target_cache "$pkg" "$sel" base-list); then
+        local base_out base_status
+        if [ "$base_has_file" -eq 0 ] && [ "$sources" = "$rel" ]; then
+            # The target is new at the head: the base holds no such test,
+            # and the base has nothing to list.
+            base_list=''
+        else
+            base_out=$(cd "$BASE_WT" && CARGO_TARGET_DIR="$BASE_TARGET" \
+                cargo test --release "${selector[@]}" -- --list 2>&1)
+            base_status=$?
+            if [ "$base_status" -ne 0 ]; then
+                printf 'FAIL the base of the target %s does not build, so its test list cannot be read\n' "$pkg"
+                printf '%s\n' "$base_out" | tail -12
+                STEP8_FAIL=1
+                return 0
+            fi
+            base_list=$(printf '%s\n' "$base_out" | sed -n 's/^\(.*\): test$/\1/p')
+        fi
+        write_target_cache "$pkg" "$sel" base-list "$base_list"
+    fi
+
+    # The source view of the target, at the head and at the base.
+    if ! head_view=$(read_target_cache "$pkg" "$sel" head-view); then
+        head_view=$(target_view HEAD $sources)
+        write_target_cache "$pkg" "$sel" head-view "$head_view"
+    fi
+    if ! base_view=$(read_target_cache "$pkg" "$sel" base-view); then
+        base_view=$(target_view "$BASE_REF" $sources)
+        write_target_cache "$pkg" "$sel" base-view "$base_view"
+    fi
+
+    # The binary and the source must see the same tests, or the gate is
+    # looking at a target it cannot see.
+    if ! same_test_set "$head_list" "$head_view"; then
+        printf 'FAIL the source view and the test binary disagree about the tests of the target %s\n' "$pkg"
+        printf '     binary: %s\n' \
+            "$(printf '%s\n' "$head_list" | sed 's/.*:://' | tr '\n' ' ')"
+        printf '     source: %s\n' \
+            "$(printf '%s\n' "$head_view" | cut -f1 | tr '\n' ' ')"
+        STEP8_FAIL=1
+        return 0
+    fi
+    if ! same_test_set "$base_list" "$base_view"; then
+        printf 'FAIL the source view and the base test binary disagree about the tests of the target %s\n' "$pkg"
+        STEP8_FAIL=1
+        return 0
+    fi
+
+    # A name the target holds twice cannot be told apart, so the gate says
+    # so instead of guessing which of the two changed.
+    count=$(printf '%s\n' "$head_view" | cut -f1 | sort | uniq -d | tr '\n' ' ')
+    if [ -n "$count" ]; then
+        printf 'FAIL the target %s holds two tests with the same name (%s)\n' "$pkg" "$count"
+        printf '     the gate judges a test by its target and its name, and it cannot tell them apart\n'
+        STEP8_FAIL=1
+        return 0
+    fi
+
+    printf '  %s: the target %s, %s test(s) at the head, %s at the base\n' "$rel" "$pkg" \
+        "$(printf '%s\n' "$head_list" | grep -c . || true)" \
+        "$(printf '%s\n' "$base_list" | grep -c . || true)"
+
+    # The changed tests of this file: the ones the head has and the base
+    # does not, and the ones both have whose own source differs. A change
+    # in the code outside every test (a shared helper) reaches tests the
+    # gate cannot attribute to one of them, so it is charged to every test
+    # of the file.
+    CHANGED_TESTS_ARRAY=()
+    while IFS=$'\t' read -r name file _first _last digest; do
+        [ "$file" = "$rel" ] || continue
+        full=$(full_test_name "$head_list" "$name")
+        if [ -z "$full" ]; then
+            printf 'FAIL the test %s of %s cannot be matched to a test of the target %s\n' \
+                "$name" "$rel" "$pkg"
+            STEP8_FAIL=1
+            continue
+        fi
+        if ! printf '%s\n' "$base_list" | grep -qxF "$full"; then
+            CHANGED_TESTS_ARRAY+=("$full")
+            continue
+        fi
+        b_digest=$(source_digest_of "$base_view" "$name")
+        if [ "$digest" != "$b_digest" ]; then
+            CHANGED_TESTS_ARRAY+=("$full")
+        fi
+    done <<EOF
+$head_view
+EOF
+    h_rest=$(source_rest_of HEAD "$rel")
+    b_rest=$(source_rest_of "$BASE_REF" "$rel")
+    if [ "$h_rest" != "$b_rest" ]; then
+        printf '  the code outside every test changed, so every test in it is treated as changed\n'
+        CHANGED_TESTS_ARRAY=()
+        while IFS=$'\t' read -r name file _first _last _digest; do
+            [ "$file" = "$rel" ] || continue
+            full=$(full_test_name "$head_list" "$name")
+            [ -n "$full" ] || continue
+            CHANGED_TESTS_ARRAY+=("$full")
+        done <<EOF
+$head_view
+EOF
+    fi
+    if [ "${#CHANGED_TESTS_ARRAY[@]}" -eq 0 ]; then
+        printf '  no test was added or changed\n'
+        return 0
+    fi
+
+    # The base tree for this file's run: the base ref, with the head's test
+    # code for the file under judgement, and with the head's version of the
+    # changed files of the dev-only packages the judged package depends on.
+    if ! prepare_base_tree "$rel" "$jdir" "$jband"; then
+        STEP8_FAIL=1
+        return 0
+    fi
+    print_base_tree_state "$rel" "$jdir" "$jband"
+
+    for tn in "${CHANGED_TESTS_ARRAY[@]}"; do
+        sname=$(printf '%s\n' "$tn" | sed 's/.*:://')
+        # The base run: the test must fail there. The head run: the test
+        # must pass here.
+        base_verdict=$(run_one_test "$BASE_WT" "$BASE_TARGET" "$tn" \
+            "$REPORT_DIR/base-run.log")
+        head_verdict=$(run_one_test "$REPO_ROOT" '' "$tn" \
+            "$REPORT_DIR/head-run.log")
+        if [ "$base_verdict" = ignored ] || [ "$head_verdict" = ignored ]; then
+            # The test is #[ignore]d, so it needs the install. Without it
+            # there is nothing to run against, and a step that cannot
+            # measure is a required skip.
+            if [ -z "${FO1_DATA:-}" ]; then
+                printf '  fail-before  %-52s base %-14s head %s\n' \
+                    "$tn" "$base_verdict" "$head_verdict"
+                printf 'FAIL %s holds an ignored test and FO1_DATA is not set, so it cannot be measured\n' \
+                    "$rel"
+                STEP8_SKIP="$rel holds an ignored test and FO1_DATA is not set"
+                continue
+            fi
+            if [ "$base_verdict" = ignored ]; then
+                base_verdict=$(run_one_test_ignored "$BASE_WT" "$BASE_TARGET" "$tn" \
+                    "$REPORT_DIR/base-run.log")
+            fi
+            if [ "$head_verdict" = ignored ]; then
+                head_verdict=$(run_one_test_ignored "$REPO_ROOT" '' "$tn" \
+                    "$REPORT_DIR/head-run.log")
+            fi
+        fi
+        printf '  fail-before  %-52s base %-14s head %s\n' \
+            "$tn" "$base_verdict" "$head_verdict"
+
+        if [ "$head_verdict" != passed ]; then
+            printf 'FAIL the test %s of %s does not pass on the head\n' "$tn" "$rel"
+            printf '     the run gave: %s\n' "$head_verdict"
+            printf '     head run, last lines:\n'
+            tail -12 "$REPORT_DIR/head-run.log"
+            STEP8_FAIL=1
+            continue
+        fi
+        if [ "$base_verdict" = failed ]; then
+            printf '     proved by the base: the test fails there\n'
+            continue
+        fi
+        if [ "$base_verdict" = 'compile error' ]; then
+            # The guide's case: "a compile error counts as a failure". The
+            # base tree holds the head's test code and the base's
+            # implementation, so the compile error is the base's own fault
+            # and not an artefact of the copy. It is reported as a verdict
+            # of its own, with the compiler's first lines, so that a reader
+            # sees it is not the same thing as a test that failed.
+            printf '     proved by the base: the base cannot build the head test, and a compile error counts as a failure\n'
+            printf '     base run, first lines:\n'
+            grep -E '^error(\[|:)' "$REPORT_DIR/base-run.log" | head -6
+            continue
+        fi
+        if [ "$base_verdict" = absent ]; then
+            printf 'FAIL the test %s of %s did not run on the base, so nothing was measured\n' \
+                "$tn" "$rel"
+            printf '     base run, last lines:\n'
+            tail -12 "$REPORT_DIR/base-run.log"
+            STEP8_FAIL=1
+            continue
+        fi
+        # The test passes on the base, so it proves nothing about this
+        # change. It needs a recorded mutation kill or an exemption, and the
+        # gate checks the record rather than trusting it.
+        if record=$(record_for "$rel" "$sname"); then
+            IFS=$'\t' read -r r_file r_test r_impl r_from r_to r_reason <<<"$record"
+            if check_mutation_record "$rel" "$tn" "$r_impl" "$r_from" "$r_to"; then
+                continue
+            fi
+            STEP8_FAIL=1
+            continue
+        fi
+        if exemption=$(exemption_for "$rel" "$sname"); then
+            printf '     relying on the exemption: %s\n' "$exemption"
+            continue
+        fi
+        printf 'FAIL the test %s of %s passes on the base, so it proves nothing about this change\n' \
+            "$tn" "$rel"
+        printf '     and it carries neither a recorded mutation kill nor an exemption\n'
+        printf '     expected exemption: %s :: %s :: <reason>\n' "$rel" "$sname"
+        printf '     expected record:   %s :: %s :: <impl file> :: <from line> :: <to line> :: <reason>\n' \
+            "$rel" "$sname"
+        printf '     add it to %s\n' "$NOTES_FILE"
+        STEP8_FAIL=1
+    done
+    return 0
+}
+
+# The base tree for the run of one file.
+#
+#   - the BASE version of every file that carries the implementation under
+#     test: the base is the base;
+#   - the HEAD version of the file under judgement, or of its cfg(test)
+#     region when the same file also carries the implementation;
+#   - the HEAD version of the changed files of the dev-only packages the
+#     judged package depends on, which are the harness the test needs to
+#     build.
+prepare_base_tree() {
+    local rel="$1" jdir="$2" jband="$3"
+    local c cdir cname cband deps head_copy
+    deps=" $(package_deps "$jdir") "
+    while IFS= read -r c; do
+        [ -n "$c" ] || continue
+        cdir=$(package_of_file "$c") || continue
+        [ "$cdir" = "$jdir" ] && continue
+        case "$deps" in
+            *" $cdir "*) ;;
+            *) continue ;;
+        esac
+        cname=$(package_name_of_dir "$cdir")
+        cband=$(band_of_package "$cname")
+        [ "$cband" = "$GATE_DEV_BAND" ] || continue
+        mkdir -p "$BASE_WT/$(dirname "$c")"
+        if ! git show "HEAD:$c" >"$BASE_WT/$c" 2>/dev/null; then
+            printf 'FAIL the head version of %s could not be read, so the base run would prove nothing\n' "$c"
+            return 1
+        fi
+    done <<EOF
+$CHANGED_ALL
+EOF
+    # The file under judgement. The whole file when it is test code, and
+    # its cfg(test) region when it also carries the implementation under
+    # test: the base run must measure the BASE implementation.
+    mkdir -p "$BASE_WT/$(dirname "$rel")"
+    if [ "$jband" = "$GATE_DEV_BAND" ] || ! git cat-file -e "$BASE_REF:$rel" 2>/dev/null; then
+        if ! git show "HEAD:$rel" >"$BASE_WT/$rel" 2>/dev/null; then
+            printf 'FAIL the head version of %s could not be read\n' "$rel"
+            return 1
+        fi
+        return 0
+    fi
+    head_copy="$SOURCE_VIEW/head-$(printf '%s' "$rel" | tr '/' '_')"
+    if ! git show "HEAD:$rel" >"$head_copy" 2>/dev/null; then
+        printf 'FAIL the head version of %s could not be read\n' "$rel"
+        return 1
+    fi
+    local blocks
+    blocks=$("$PYTHON_BIN" "$GATE_TOOLS" cfg-tests "$head_copy" 2>/dev/null)
+    if [ "${blocks:-0}" -eq 0 ]; then
+        # The file holds tests outside a cfg(test) region, so the gate
+        # cannot separate the test from the implementation. The whole file
+        # is judged, and the base run then measures the head's file: the
+        # step says so, because a reader must know which tree was measured.
+        printf '  note: %s holds its tests outside a cfg(test) region, so the whole file is judged\n' "$rel"
+        if ! git show "HEAD:$rel" >"$BASE_WT/$rel" 2>/dev/null; then
+            printf 'FAIL the head version of %s could not be read\n' "$rel"
+            return 1
+        fi
+        return 0
+    fi
+    if ! "$PYTHON_BIN" "$GATE_TOOLS" splice "$BASE_WT/$rel" "$head_copy" >/dev/null 2>&1; then
+        printf 'FAIL the cfg(test) region of %s could not be spliced into the base\n' "$rel"
+        return 1
+    fi
+    return 0
+}
+
+# What the base tree holds, said out loud. A reader must be able to see that
+# the base run measured the base implementation, and that the files the test
+# needs are the head's.
+print_base_tree_state() {
+    local rel="$1" jdir="$2" jband="$3"
+    local c cdir cname cband deps digest
+    deps=" $(package_deps "$jdir") "
+    printf '  base tree: restored to %s before this run\n' "$BASE_REF"
+    while IFS= read -r c; do
+        [ -n "$c" ] || continue
+        cdir=$(package_of_file "$c") || continue
+        if [ "$c" = "$rel" ]; then
+            if [ "$jband" = "$GATE_DEV_BAND" ]; then
+                printf '    %-52s head (the file under judgement)\n' "$c"
+            else
+                printf '    %-52s base + the head cfg(test) region\n' "$c"
+            fi
+            continue
+        fi
+        case "$deps" in
+            *" $cdir "*) ;;
+            *) printf '    %-52s base\n' "$c"; continue ;;
+        esac
+        cname=$(package_name_of_dir "$cdir")
+        cband=$(band_of_package "$cname")
+        if [ "$cband" = "$GATE_DEV_BAND" ]; then
+            printf '    %-52s head (the harness the test needs)\n' "$c"
+        else
+            printf '    %-52s base\n' "$c"
+        fi
+    done <<EOF
+$CHANGED_ALL
+EOF
+}
+
+# The cache of what the gate read once for a target: the test list and the
+# source view, at the head and at the base. A target is read once, because
+# the head and the base do not change while the step runs.
+TARGET_CACHE_DIR="$SOURCE_VIEW/targets"
+mkdir -p "$TARGET_CACHE_DIR"
+
+target_cache_key() {
+    printf '%s|%s' "$1" "$2" | tr -c 'A-Za-z0-9._-' '_'
+}
+
+read_target_cache() {
+    # read_target_cache <package> <selector> <kind> -> the cached value
+    local file="$TARGET_CACHE_DIR/$(target_cache_key "$1" "$2").$3"
+    [ -f "$file" ] || return 1
+    cat "$file"
+}
+
+write_target_cache() {
+    # write_target_cache <package> <selector> <kind> <value>
+    local file="$TARGET_CACHE_DIR/$(target_cache_key "$1" "$2").$3"
+    printf '%s' "$4" >"$file"
 }
 
 # Every step runs, whatever the earlier steps did: see the header.
@@ -1331,291 +2185,109 @@ run_one_test_ignored() {
         skip_step 8 '8 fail before, pass after' \
             'neither python nor python3 was found, so the changed tests cannot be located'
     else
-        CHANGED_TESTS=$(git diff --name-only "$BASE_REF...HEAD" -- tests/gates/ 2>/dev/null |
-            grep '\.rs$' || true)
-        if [ -z "$CHANGED_TESTS" ]; then
-            printf 'no gate test changed since %s, so the change is a pure refactor and is exempt\n' \
-                "$BASE_REF"
-            step '8 fail before, pass after' pass "no gate test changed since $BASE_REF"
+        # The changed files since the base ref, and the test targets of the
+        # two trees.
+        CHANGED_ALL=$(git diff --name-only "$BASE_REF...HEAD" 2>/dev/null)
+        HEAD_INV="$SOURCE_VIEW/inventory-head"
+        BASE_INV="$SOURCE_VIEW/inventory-base"
+        if ! target_inventory HEAD >"$HEAD_INV"; then
+            printf 'FAIL the test targets of the HEAD tree could not be read\n'
+            step '8 fail before, pass after' fail 'the test targets of the HEAD tree could not be read'
+            note_failure '8 fail before, pass after'
+        elif ! target_inventory "$BASE_REF" >"$BASE_INV"; then
+            printf 'FAIL the test targets of the %s tree could not be read\n' "$BASE_REF"
+            step '8 fail before, pass after' fail "the test targets of the $BASE_REF tree could not be read"
+            note_failure '8 fail before, pass after'
         else
-            printf 'gate test file(s) changed since %s\n' "$BASE_REF"
-            printf '  %s\n' $CHANGED_TESTS
-            # The exemptions and the records are read once, and a malformed
-            # entry fails the step before any run is made: an approval the
-            # gate cannot read is not an approval, the same way a key in
-            # expected_counts.toml that the gate does not understand fails
-            # step 7.
-            NOTES=$(read_notes)
-            RECORDS=$(read_records)
-            NOTES_BAD=$(printf '%s\n' "$NOTES" | grep -c '^MALFORMED' || true)
-            RECORDS_BAD=$(printf '%s\n' "$RECORDS" | grep -c '^MALFORMED' || true)
-            if [ "${NOTES_BAD:-0}" -ne 0 ]; then
-                printf '%s\n' "$NOTES" | grep '^MALFORMED' |
-                    sed 's/^MALFORMED/FAIL malformed exemption entry in /'
-                printf '     the format is <test file> :: <test name> :: <reason>\n'
-                printf '     the entries live in the "## Entries" section of %s\n' "$NOTES_FILE"
-            fi
-            if [ "${RECORDS_BAD:-0}" -ne 0 ]; then
-                printf '%s\n' "$RECORDS" | grep '^MALFORMED' |
-                    sed 's/^MALFORMED/FAIL malformed mutation record in /'
-                printf '     the format is <test file> :: <test name> :: <impl file> :: <from line> :: <to line> :: <reason>\n'
-                printf '     the records live in the "## Recorded mutation kills" section of %s\n' "$NOTES_FILE"
-            fi
-            # An exemption or a record must name the test it covers, so one
-            # that names a test the file does not hold is rejected before any
-            # run is made.
-            NOTES_UNNAMED=0
-            if ! validate_notes; then
-                NOTES_UNNAMED=1
-                printf '     the test name must be a test function of the file the entry names\n'
-            fi
-            RECORDS_UNNAMED=0
-            if ! validate_records; then
-                RECORDS_UNNAMED=1
-                printf '     the record must name a test function of the file it names, and an\n'
-                printf '     implementation file that is in the HEAD tree\n'
-            fi
-            # The base worktree and its own target directory. Both paths are
-            # absolute: the base run runs cargo with the working directory
-            # set to the worktree, so a relative CARGO_TARGET_DIR would be
-            # resolved against the worktree and land in a nested path.
-            BASE_WT="$REPO_ROOT/$REPORT_DIR/base-worktree"
-            BASE_TARGET="$BASE_WT/target-base"
-            rm -rf "$BASE_WT"
-            if ! git worktree add --detach "$BASE_WT" "$BASE_REF" >/dev/null 2>&1; then
-                printf 'FAIL the base worktree of %s could not be created\n' "$BASE_REF"
-                step '8 fail before, pass after' fail "the base worktree of $BASE_REF could not be created"
-                note_failure '8 fail before, pass after'
-            else
-                STEP8_FAIL=0
-                STEP8_SKIP=''
-                if [ "${NOTES_BAD:-0}" -ne 0 ] || [ "${NOTES_UNNAMED:-0}" -ne 0 ] ||
-                    [ "${RECORDS_BAD:-0}" -ne 0 ] || [ "${RECORDS_UNNAMED:-0}" -ne 0 ]; then
-                    STEP8_FAIL=1
+            PACKAGE_MAP=$(package_map HEAD)
+            # The changed files that hold tests. A file that holds no test
+            # is not a test target's business, and the gate does not judge
+            # it.
+            CHANGED_TEST_FILES=''
+            for rel in $CHANGED_ALL; do
+                if target_for_file "$HEAD_INV" "$rel"; then
+                    CHANGED_TEST_FILES="$CHANGED_TEST_FILES$rel"$'\n'
                 fi
-                for rel in $CHANGED_TESTS; do
-                    name=$(head_target_name "$rel")
-                    if [ -z "$name" ]; then
-                        printf '  %-34s no [[test]] entry in HEAD Cargo.toml\n' "$rel"
-                        printf 'FAIL %s has no [[test]] entry in HEAD Cargo.toml, so it is not a test target\n' \
-                            "$rel"
-                        STEP8_FAIL=1
-                        continue
-                    fi
-
-                    # The test list of the target, at the head. The list comes
-                    # from the test binary itself, so it is the list of tests
-                    # that RUN, not a grep of the source.
-                    head_out=$(cargo test --release --test "$name" -- --list 2>&1)
-                    head_status=$?
-                    if [ "$head_status" -ne 0 ]; then
-                        printf 'FAIL the head of %s does not build, so its test list cannot be read\n' "$rel"
-                        printf '%s\n' "$head_out" | tail -12
-                        STEP8_FAIL=1
-                        continue
-                    fi
-                    head_list=$(printf '%s\n' "$head_out" | sed -n 's/^\(.*\): test$/\1/p')
-                    head_src=$(source_tests_of HEAD "$rel" 2>/dev/null)
-                    if ! same_test_set "$head_list" "$head_src"; then
-                        printf 'FAIL the source view and the test binary disagree about the tests of %s\n' "$rel"
-                        printf '     binary: %s\n' \
-                            "$(printf '%s\n' "$head_list" | sed 's/.*:://' | tr '\n' ' ')"
-                        printf '     source: %s\n' \
-                            "$(printf '%s\n' "$head_src" | cut -f1 | tr '\n' ' ')"
-                        STEP8_FAIL=1
-                        continue
-                    fi
-
-                    # The base may not have the [[test]] entry for this file.
-                    # The head's entry is added so that the base can build and
-                    # list it.
-                    if ! grep -q "path = \"$rel\"" "$BASE_WT/Cargo.toml" 2>/dev/null; then
-                        block=$(head_test_block "$rel")
-                        if [ -n "$block" ]; then
-                            printf '\n%s\n' "$block" >>"$BASE_WT/Cargo.toml"
-                        fi
-                    fi
-                    # The base's own copy of the file, listed by the base's own
-                    # test binary. The head's file is copied over only after
-                    # this, so the base list is the base's tests.
-                    if ! git cat-file -e "$BASE_REF:$rel" 2>/dev/null; then
-                        base_list=''
-                        base_src=''
-                    else
-                        base_out=$(cd "$BASE_WT" && CARGO_TARGET_DIR="$BASE_TARGET" \
-                            cargo test --release --test "$name" -- --list 2>&1)
-                        base_status=$?
-                        if [ "$base_status" -ne 0 ]; then
-                            printf 'FAIL the base of %s does not build, so its test list cannot be read\n' "$rel"
-                            printf '%s\n' "$base_out" | tail -12
-                            STEP8_FAIL=1
-                            continue
-                        fi
-                        base_list=$(printf '%s\n' "$base_out" | sed -n 's/^\(.*\): test$/\1/p')
-                        base_src=$(source_tests_of "$BASE_REF" "$rel" 2>/dev/null)
-                        if ! same_test_set "$base_list" "$base_src"; then
-                            printf 'FAIL the source view and the base test binary disagree about the tests of %s\n' \
-                                "$rel"
-                            STEP8_FAIL=1
-                            continue
-                        fi
-                    fi
-
-                    printf '  %s: %s test(s) at the head, %s at the base\n' "$rel" \
-                        "$(printf '%s\n' "$head_list" | grep -c . || true)" \
-                        "$(printf '%s\n' "$base_list" | grep -c . || true)"
-
-                    # The changed tests: the ones the head has and the base
-                    # does not, and the ones both have whose own source
-                    # differs. A change in the file that lies outside every
-                    # test (a helper, a use statement) reaches tests the gate
-                    # cannot attribute to one of them, so it is charged to
-                    # every test in the file.
-                    CHANGED_SET=''
-                    while IFS= read -r tn; do
-                        [ -n "$tn" ] || continue
-                        if ! printf '%s\n' "$base_list" | grep -qxF "$tn"; then
-                            CHANGED_SET="$CHANGED_SET$tn"$'\n'
-                            continue
-                        fi
-                        sname=$(printf '%s\n' "$tn" | sed 's/.*:://')
-                        h_digest=$(source_digest_of "$head_src" "$sname")
-                        b_digest=$(source_digest_of "$base_src" "$sname")
-                        if [ "$h_digest" != "$b_digest" ]; then
-                            CHANGED_SET="$CHANGED_SET$tn"$'\n'
-                        fi
-                    done <<EOF
-$head_list
-EOF
-                    REMOVED_SET=''
-                    while IFS= read -r tn; do
-                        [ -n "$tn" ] || continue
-                        if ! printf '%s\n' "$head_list" | grep -qxF "$tn"; then
-                            REMOVED_SET="$REMOVED_SET$tn"$'\n'
-                        fi
-                    done <<EOF
-$base_list
-EOF
-                    if [ -n "$REMOVED_SET" ]; then
-                        printf '  removed: %s\n' "$(printf '%s' "$REMOVED_SET" | tr '\n' ' ')"
-                    fi
-                    h_rest=$(source_rest_of HEAD "$rel")
-                    b_rest=$(source_rest_of "$BASE_REF" "$rel")
-                    if [ "$h_rest" != "$b_rest" ]; then
-                        printf '  the code outside every test changed, so every test in it is treated as changed\n'
-                        CHANGED_SET="$head_list"$'\n'
-                    fi
-
-                    # The list of the changed tests, read into an array, so
-                    # that the runs below do not read the loop's input.
-                    CHANGED_TESTS_ARRAY=()
-                    while IFS= read -r tn; do
-                        [ -n "$tn" ] || continue
-                        CHANGED_TESTS_ARRAY+=("$tn")
-                    done <<EOF
-$CHANGED_SET
-EOF
-                    if [ "${#CHANGED_TESTS_ARRAY[@]}" -eq 0 ]; then
-                        printf '  no test was added or changed\n'
-                        continue
-                    fi
-
-                    # Copy HEAD's version of the test file onto the base tree.
-                    # The base now holds the head's tests, so the run below
-                    # measures the head's test against the base's
-                    # implementation.
-                    mkdir -p "$BASE_WT/$(dirname "$rel")"
-                    if ! git show "HEAD:$rel" >"$BASE_WT/$rel" 2>/dev/null; then
-                        printf 'FAIL %s could not be read from HEAD\n' "$rel"
-                        STEP8_FAIL=1
-                        continue
-                    fi
-
-                    for tn in "${CHANGED_TESTS_ARRAY[@]}"; do
-                        sname=$(printf '%s\n' "$tn" | sed 's/.*:://')
-                        # The base run: the test must fail there. The head
-                        # run: the test must pass here.
-                        base_verdict=$(run_one_test "$BASE_WT" "$BASE_TARGET" "$name" "$tn" \
-                            "$REPORT_DIR/base-run.log")
-                        head_verdict=$(run_one_test "$REPO_ROOT" '' "$name" "$tn" \
-                            "$REPORT_DIR/head-run.log")
-                        if [ "$base_verdict" = ignored ] || [ "$head_verdict" = ignored ]; then
-                            # The test is #[ignore]d, so it needs the install.
-                            # Without it there is nothing to run against, and
-                            # a step that cannot measure is a required skip.
-                            if [ -z "${FO1_DATA:-}" ]; then
-                                printf '  fail-before  %-52s base %-14s head %s\n' \
-                                    "$tn" "$base_verdict" "$head_verdict"
-                                printf 'FAIL %s holds an ignored test and FO1_DATA is not set, so it cannot be measured\n' \
-                                    "$rel"
-                                STEP8_SKIP="$rel holds an ignored test and FO1_DATA is not set"
-                                continue
-                            fi
-                            if [ "$base_verdict" = ignored ]; then
-                                base_verdict=$(run_one_test_ignored "$BASE_WT" "$BASE_TARGET" "$name" "$tn" \
-                                    "$REPORT_DIR/base-run.log")
-                            fi
-                            if [ "$head_verdict" = ignored ]; then
-                                head_verdict=$(run_one_test_ignored "$REPO_ROOT" '' "$name" "$tn" \
-                                    "$REPORT_DIR/head-run.log")
-                            fi
-                        fi
-                        printf '  fail-before  %-52s base %-14s head %s\n' \
-                            "$tn" "$base_verdict" "$head_verdict"
-
-                        if [ "$head_verdict" != passed ]; then
-                            printf 'FAIL the test %s of %s does not pass on the head\n' "$tn" "$rel"
-                            printf '     the run gave: %s\n' "$head_verdict"
-                            printf '     head run, last lines:\n'
-                            tail -12 "$REPORT_DIR/head-run.log"
-                            STEP8_FAIL=1
-                            continue
-                        fi
-                        if [ "$base_verdict" = failed ]; then
-                            printf '     proved by the base: the test fails there\n'
-                            continue
-                        fi
-                        if [ "$base_verdict" = 'compile error' ]; then
-                            printf '     proved by the base: the file does not compile there, and a compile error counts as a failure\n'
-                            continue
-                        fi
-                        # The test passes on the base, so it proves nothing
-                        # about this change. It needs a recorded mutation
-                        # kill or an exemption, and the gate checks the
-                        # record rather than trusting it.
-                        if record=$(record_for "$rel" "$sname"); then
-                            IFS=$'\t' read -r r_file r_test r_impl r_from r_to r_reason <<<"$record"
-                            if check_mutation_record "$rel" "$tn" "$r_impl" "$r_from" "$r_to"; then
-                                continue
-                            fi
-                            STEP8_FAIL=1
-                            continue
-                        fi
-                        if exemption=$(exemption_for "$rel" "$sname"); then
-                            printf '     relying on the exemption: %s\n' "$exemption"
-                            continue
-                        fi
-                        printf 'FAIL the test %s of %s passes on the base, so it proves nothing about this change\n' \
-                            "$tn" "$rel"
-                        printf '     and it carries neither a recorded mutation kill nor an exemption\n'
-                        printf '     expected exemption: %s :: %s :: <reason>\n' "$rel" "$sname"
-                        printf '     expected record:   %s :: %s :: <impl file> :: <from line> :: <to line> :: <reason>\n' \
-                            "$rel" "$sname"
-                        printf '     add it to %s\n' "$NOTES_FILE"
-                        STEP8_FAIL=1
-                    done
-                done
-                cleanup_worktrees
-
-                if [ "$STEP8_FAIL" -ne 0 ]; then
-                    step '8 fail before, pass after' fail \
-                        'a changed test did not fail on the base, did not pass on the head, or was not accounted for'
+            done
+            if [ -z "$CHANGED_TEST_FILES" ]; then
+                printf 'no test of any test target changed since %s, so the change is exempt\n' \
+                    "$BASE_REF"
+                printf '  the targets read: %s\n' \
+                    "$(cut -f1 "$HEAD_INV" | sort -u | tr '\n' ' ')"
+                step '8 fail before, pass after' pass "no test changed since $BASE_REF"
+            else
+                printf 'test file(s) changed since %s\n' "$BASE_REF"
+                printf '  %s\n' $CHANGED_TEST_FILES
+                # The exemptions and the records are read once, and a
+                # malformed entry fails the step before any run is made: an
+                # approval the gate cannot read is not an approval, the same
+                # way a key in expected_counts.toml that the gate does not
+                # understand fails step 7.
+                NOTES=$(read_notes)
+                RECORDS=$(read_records)
+                NOTES_BAD=$(printf '%s\n' "$NOTES" | grep -c '^MALFORMED' || true)
+                RECORDS_BAD=$(printf '%s\n' "$RECORDS" | grep -c '^MALFORMED' || true)
+                if [ "${NOTES_BAD:-0}" -ne 0 ]; then
+                    printf '%s\n' "$NOTES" | grep '^MALFORMED' |
+                        sed 's/^MALFORMED/FAIL malformed exemption entry in /'
+                    printf '     the format is <test file> :: <test name> :: <reason>\n'
+                    printf '     the entries live in the "## Entries" section of %s\n' "$NOTES_FILE"
+                fi
+                if [ "${RECORDS_BAD:-0}" -ne 0 ]; then
+                    printf '%s\n' "$RECORDS" | grep '^MALFORMED' |
+                        sed 's/^MALFORMED/FAIL malformed mutation record in /'
+                    printf '     the format is <test file> :: <test name> :: <impl file> :: <from line> :: <to line> :: <reason>\n'
+                    printf '     the records live in the "## Recorded mutation kills" section of %s\n' "$NOTES_FILE"
+                fi
+                # An exemption or a record must name the test it covers, so
+                # one that names a test the file does not hold is rejected
+                # before any run is made.
+                NOTES_UNNAMED=0
+                if ! validate_notes; then
+                    NOTES_UNNAMED=1
+                    printf '     the test name must be a test function of the file the entry names\n'
+                fi
+                RECORDS_UNNAMED=0
+                if ! validate_records; then
+                    RECORDS_UNNAMED=1
+                    printf '     the record must name a test function of the file it names, and an\n'
+                    printf '     implementation file that is in the HEAD tree\n'
+                fi
+                # The base worktree. Its build directory is outside the
+                # worktree, so the restore of the tree does not throw the
+                # build away, and a base build cannot poison the head build.
+                BASE_WT="$REPO_ROOT/$REPORT_DIR/base-worktree"
+                BASE_TARGET="$REPORT_DIR/base-target"
+                rm -rf "$BASE_WT"
+                if ! git worktree add --detach "$BASE_WT" "$BASE_REF" >/dev/null 2>&1; then
+                    printf 'FAIL the base worktree of %s could not be created\n' "$BASE_REF"
+                    step '8 fail before, pass after' fail "the base worktree of $BASE_REF could not be created"
                     note_failure '8 fail before, pass after'
-                elif [ -n "$STEP8_SKIP" ]; then
-                    skip_step 8 '8 fail before, pass after' "$STEP8_SKIP"
                 else
-                    step '8 fail before, pass after' pass \
-                        'every added or changed test fails on the base and passes on the head'
+                    STEP8_FAIL=0
+                    STEP8_SKIP=''
+                    if [ "${NOTES_BAD:-0}" -ne 0 ] || [ "${NOTES_UNNAMED:-0}" -ne 0 ] ||
+                        [ "${RECORDS_BAD:-0}" -ne 0 ] || [ "${RECORDS_UNNAMED:-0}" -ne 0 ]; then
+                        STEP8_FAIL=1
+                    fi
+                    while IFS= read -r rel; do
+                        [ -n "$rel" ] || continue
+                        judge_file "$rel"
+                    done <<EOF
+$CHANGED_TEST_FILES
+EOF
+                    cleanup_worktrees
+
+                    if [ "$STEP8_FAIL" -ne 0 ]; then
+                        step '8 fail before, pass after' fail \
+                            'a changed test did not fail on the base, did not pass on the head, or was not accounted for'
+                        note_failure '8 fail before, pass after'
+                    elif [ -n "$STEP8_SKIP" ]; then
+                        skip_step 8 '8 fail before, pass after' "$STEP8_SKIP"
+                    else
+                        step '8 fail before, pass after' pass \
+                            'every added or changed test fails on the base and passes on the head'
+                    fi
                 fi
             fi
         fi
