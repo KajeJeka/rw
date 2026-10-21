@@ -65,7 +65,7 @@ is class 2: the closure over 20,456 chains constrains the corpus rules it
 carries together. Neither test isolates the rule it carries, and neither is
 meant to.
 
-Built by reading the seven files under `tests/gates/` and taking each `#[test]`'s
+Built by reading the eight files under `tests/gates/` and taking each `#[test]`'s
 doc comment verbatim: the `claim:` line where there is one, otherwise the claim
 ids the doc comment states in prose. Nothing here is inferred.
 
@@ -181,9 +181,38 @@ ids the doc comment states in prose. Nothing here is inferred.
 | EXETBL-016 | `install_exe_tables.rs`::install_stat_limits_are_thirty_eight_records_of_six_fields_with_a_zero_field_zero | 1 |
 | EXETBL-017 | `install_exe_tables.rs`::install_stat_limits_are_thirty_eight_records_of_six_fields_with_a_zero_field_zero | 1 |
 
+### Hold-out vectors (`docs/spec/holdout.md`)
+
+| Claim | Tests | Oracle class |
+| --- | --- | --- |
+| HOLD-001 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-003 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-004 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-005 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-006 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-007 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-008 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-009 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-010 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-011 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-012 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-013 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-014 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-015 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-016 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-017 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-018 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-020 | `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 1 |
+| HOLD-021 | `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 1 |
+| HOLD-022 | `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 1 |
+| HOLD-023 | `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 1 |
+| HOLD-025 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-026 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-027 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+
 ## Claims with no test
 
-20 of the 110 claim ids in `docs/spec/*.md` are cited by no gate test. Each reason below is why, not an excuse.
+36 of the 143 claim ids in `docs/spec/*.md` are cited by no gate test. Each reason below is why, not an excuse.
 
 | Claim | Why there is no test |
 | --- | --- |
@@ -207,6 +236,15 @@ ids the doc comment states in prose. Nothing here is inferred.
 | END-033 | VERSION DIFFERENCE IDENTIFIED. A statement that the older `.INT` note is discarded and must not be implemented. Same shape: a decision, not a behaviour. |
 | LZSS-024 | UNVERIFIED. An interface claim, and one the spec itself records as stated twice with two spellings. `synthetic_lzss.rs` exercises both spellings but cites LZSS-013/014/005 for the behaviour. A compile-time signature assertion would cover it; not written. |
 | LZSS-025 | Community Edition agrees on the same value. No Community Edition artefact is in scope and no CE source is quoted, so nothing here can grade it. |
+| HOLD-002 | UNVERIFIED. A publication rule: the repository holds no vector data at all. It is a property of what was committed, not of a behaviour, and `tools/check_public.sh` is what holds it. |
+| HOLD-019 | UNVERIFIED. A rule about the owner's generator: the DAT vectors are made by a decoder written from the specifications alone and in another language. Nothing inside this workspace can observe how the vectors were made. |
+| HOLD-024 | UNVERIFIED. The same rule for the executable table vectors: the expected bytes are read out of the reference executable by a separate extraction tool. The gate can check the bytes it is given; it cannot check who wrote them. |
+| HOLD-028 | UNVERIFIED. A layering rule: no crate in this workspace may read the references directory. `tools/check_layers.sh` and the banned pattern lint over the production sources are what hold it. |
+| HOLD-029 | UNVERIFIED. A rule about the vectors, not about the reader: the first milestone's set holds 32 DAT vectors in 32 families. The reader checks the count the manifest declares, and the families themselves belong to `docs/spec/dat.md` and `docs/spec/lzss.md`. |
+| HOLD-030 | UNVERIFIED. The rules every DAT vector obeys. The generator asserts them before a vector reaches the manifest, and the gate grades the reader against the vectors rather than against the generator. |
+| HOLD-031 | UNVERIFIED. The same rule for the executable table vectors: 16 of them, in 16 families, with the offsets and extents owned by `docs/spec/exe-tables.md`. |
+| HOLD-032 | UNVERIFIED. The rules every executable table vector obeys. The generator asserts them, and the manifest's digest is what binds the set to the bytes. |
+| HOLD-033 | UNVERIFIED. A rule about the owner's generator and seed. The seed is provenance and the reader uses it for nothing at all, which HOLD-008 already records. |
 
 ## Claims with an open gap
 
@@ -240,6 +278,7 @@ DAT-031, DAT-032, DAT-033 and DAT-034 were added to `docs/spec/dat.md` by an orc
 | LZSS | 25 | 23 | 2 |
 | DAT | 34 | 32 | 2 |
 | EXETBL | 17 | 17 | 0 |
-| **all** | **110** | **90** | **20** |
+| HOLD | 33 | 24 | 9 |
+| **all** | **143** | **107** | **36** |
 
-137 tests across seven gate files: `synthetic_endian.rs` 22, `synthetic_lzss.rs` 18, `synthetic_dat.rs` 23, `synthetic_exe.rs` 31, `install_archive.rs` 14, `install_plaintext.rs` 6, `install_exe_tables.rs` 23.
+139 tests across eight gate files: `synthetic_endian.rs` 22, `synthetic_lzss.rs` 18, `synthetic_dat.rs` 23, `synthetic_exe.rs` 31, `install_archive.rs` 14, `install_plaintext.rs` 6, `install_exe_tables.rs` 23, `install_holdout.rs` 2.

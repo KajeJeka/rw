@@ -21,13 +21,21 @@ synthetic_exe 31
 # all and runs in the default test run. All 23 of them are counted under
 # min_install_tests below, and the per-file floor of 23 counts every test the
 # file holds.
+#
+# install_holdout holds 2 tests and both of them are #[ignore]d: the hold-out
+# vectors live in the owner's private folder (FO1_REF/holdout/) and this
+# repository holds no vector data at all, so the default test run cannot grade
+# anything here. The floor counts the test functions the file holds. The number
+# of CASES the file runs is not a floor: it belongs to the manifest and rises
+# whenever the owner adds a vector (docs/spec/holdout.md, HOLD-027).
 install_archive 14
 install_plaintext 6
 install_exe_tables 23
+install_holdout 2
 
-# Totals the gate asserts across the six files.
+# Totals the gate asserts across the seven files.
 min_synthetic_tests 94
-min_install_tests 43
+min_install_tests 45
 
 # Tests that live in crates/fo1-tests and run in CI: the harness fingerprint,
 # the SHA-256 vectors, and the canaries that reject write index 0 and 4095 and a
