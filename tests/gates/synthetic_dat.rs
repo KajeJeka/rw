@@ -245,6 +245,47 @@ const LZSS_CUT_PAIR_PAYLOAD: [u8; 2] = [0x00, 0x00];
 /// and the second pair starts one byte before the input ends.
 const LZSS_FULL_THEN_CUT_PAIR_PAYLOAD: [u8; 4] = [0x00, 0x00, 0x0F, 0x00];
 
+// --- the offsets an error carries (DAT-030) ------------------------------------
+
+/// A byte that is not valid UTF-8, so a stored name that carries it cannot be
+/// decoded (DAT-009, DAT-030).
+const NOT_UTF8_BYTE: u8 = 0xFF;
+
+/// Frame header of a chain block that declares a zero length payload, which
+/// the reader refuses rather than spin on (DAT-018).
+const ZERO_PAYLOAD_BLOCK_HEADER: u16 = 0;
+
+/// Frame header of a chain block that declares five payload bytes the chain
+/// does not carry (DAT-018).
+const OVERSIZED_BLOCK_HEADER: u16 = 5;
+
+/// Declared output size of the chain that starts with a raw block: the raw
+/// block produces two bytes and the entry owes one more, so the walk reaches
+/// the second block.
+const CHAIN_AFTER_RAW_DECLARED: usize = 3;
+
+/// Position of the second block's frame header within the chain: the raw
+/// block's four bytes on disk (DAT-018).
+const CHAIN_SECOND_BLOCK_CURSOR: usize = RAW_BLOCK_FRAME_BYTES;
+
+/// `synthetic_chain_after_raw`: total tree length, after one twenty six byte
+/// record. The chain's stored bytes start there.
+const CHAIN_AFTER_RAW_TREE_BYTES: usize =
+    HEADER_WIDTH + NAME_WIDTH_DOT + HEADER_WIDTH + WIDTH_CHAIN_BIN;
+
+/// Declared output size of the cut pair stream: one byte, so the stream still
+/// owes output the truncated pair never produced (LZSS-015).
+const CUT_PAIR_STREAM_DECLARED: usize = 1;
+
+/// Position of the incomplete pair's first byte inside the LZSS stream: the
+/// control byte is byte zero, so the pair starts at byte one (LZSS-007).
+const CUT_PAIR_STREAM_POSITION: usize = 1;
+
+/// `synthetic_cut_pair_stream`: total tree length, after one twenty four byte
+/// record. The stream's input starts there.
+const CUT_PAIR_STREAM_TREE_BYTES: usize =
+    HEADER_WIDTH + NAME_WIDTH_DOT + HEADER_WIDTH + WIDTH_CUT_BIN;
+
 // --- the two LZSS block chain (DAT-019) ---------------------------------------
 
 /// Control byte `0x01` of block A: bit 0 is a literal and the seven bits above
@@ -479,6 +520,7 @@ const WIDTH_SHORT_BIN: usize = record_width("SHORT.BIN");
 const WIDTH_EXACT_BN: usize = record_width("EXACT.BN");
 const WIDTH_LONG_BN: usize = record_width("LONG.BN");
 const WIDTH_ODD_BIN: usize = record_width("ODD.BIN");
+const WIDTH_CUT_BIN: usize = record_width("CUT.BIN");
 
 /// Widths of the directory names the fixtures use.
 const NAME_WIDTH_DOT: usize = name_width(".");
@@ -1213,6 +1255,49 @@ fn synthetic_single_lzss_chain(payload: &[u8], declared: usize) -> Vec<u8> {
     );
     let blocks = [SyntheticBlock::new(ROOT_DIRECTORY_NAME, &[entry])];
     synthetic_archive(&blocks, &[chain], SINGLE_BLOCK_CHAIN_TREE_BYTES)
+}
+
+/// One chain of a raw block followed by a framed block whose frame header the
+/// caller supplies and whose payload the chain does not carry.
+///
+/// The raw block is four bytes on disk: a two byte frame header and its two
+/// payload bytes. So the second block's frame header starts at cursor four,
+/// and the second block is the one the walk reaches after the raw block's two
+/// bytes (DAT-018).
+fn synthetic_chain_after_raw(second_header: u16) -> Vec<u8> {
+    let mut chain = Vec::new();
+    push_u16(&mut chain, RAW_BLOCK_HEADER);
+    chain.extend_from_slice(&RAW_BLOCK_PAYLOAD);
+    push_u16(&mut chain, second_header);
+    let entry = SyntheticEntry::chain(
+        "CHAIN.BIN",
+        CHAIN_AFTER_RAW_TREE_BYTES,
+        CHAIN_AFTER_RAW_DECLARED,
+        chain.len(),
+    );
+    let blocks = [SyntheticBlock::new(ROOT_DIRECTORY_NAME, &[entry])];
+    synthetic_archive(&blocks, &[chain], CHAIN_AFTER_RAW_TREE_BYTES)
+}
+
+/// One archive holding one whole LZSS stream whose input is
+/// [`LZSS_CUT_PAIR_PAYLOAD`], so the stream runs out in the middle of a back
+/// reference (LZSS-015).
+///
+/// The stream is mode `0x10`, so the codec reads the whole stored region and
+/// the position it reports is counted from the start of that region.
+fn synthetic_cut_pair_stream() -> Vec<u8> {
+    let entry = SyntheticEntry::stream(
+        "CUT.BIN",
+        CUT_PAIR_STREAM_TREE_BYTES,
+        CUT_PAIR_STREAM_DECLARED,
+        LZSS_CUT_PAIR_PAYLOAD.len(),
+    );
+    let blocks = [SyntheticBlock::new(ROOT_DIRECTORY_NAME, &[entry])];
+    synthetic_archive(
+        &blocks,
+        &[LZSS_CUT_PAIR_PAYLOAD.to_vec()],
+        CUT_PAIR_STREAM_TREE_BYTES,
+    )
 }
 
 // --- the synthetic archives ---------------------------------------------------
@@ -3008,6 +3093,12 @@ fn synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted() {
 
 /// claim: DAT-030, DAT-001
 /// oracle: class 5 (hand computed vectors from the spec: the root header is four big endian u32, so its third field starts at byte 8 and a ten byte tree runs out there, and an error carries the offset the failed field started at)
+///
+/// The name of this test carries the old wording, "the byte position it ran
+/// out at", and the trace map names it, so it stays. What the test pins is
+/// the rule the spec now states: the offset is where the failed operation
+/// **started**, and the offsets each variant carries are the ones the spec's
+/// *byte offset an error carries* section gives, not one rule for all of them.
 #[test]
 fn synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at() {
     // The good input twin. A complete synthetic archive goes through the same
@@ -3110,6 +3201,111 @@ fn synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at() {
         name_error,
         DatError::LengthOutOfRange { at: TRUNCATED_NAME_AT },
         "a name field that is missing its second byte reports the byte the field starts at, not the byte the reader noticed it at"
+    );
+
+    // The fourth refusal names a length byte rather than a name field. The error
+    // set is closed (DAT-030) and has no malformed-name variant, so a stored
+    // name that is not UTF-8 is reported as the unusable length it came from,
+    // and the offset it carries is that length byte's own offset.
+    let mut bad_name = synthetic_lookup();
+    bad_name[LOOKUP_ENTRY_NAME_LENGTH + 1] = NOT_UTF8_BYTE;
+    let bad_name_error = match DatArchive::parse(&bad_name, SYNTHETIC_ORIGIN) {
+        Ok(_) => panic!("a tree whose entry name is not UTF-8 must be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        bad_name_error,
+        DatError::LengthOutOfRange {
+            at: u64::from(to_u32(LOOKUP_ENTRY_NAME_LENGTH))
+        },
+        "a name that is not UTF-8 reports the length byte that asked for it"
+    );
+
+    // The fifth refusal is the LZSS path, and the only path that adds a base to
+    // a position instead of copying a field's first byte. A whole LZSS stream
+    // whose input runs out in the middle of a back reference reports the
+    // entry's payload base plus the codec's position inside the stream, and
+    // that position is the first byte of the incomplete pair (LZSS-007).
+    let cut_stream_bytes = synthetic_cut_pair_stream();
+    let cut_stream_archive = synthetic_parse(
+        &cut_stream_bytes,
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the cut pair stream",
+    );
+    let cut_stream_entry = cut_stream_archive
+        .entries()
+        .first()
+        .expect("one stream entry");
+    assert_eq!(
+        cut_stream_entry.offset,
+        to_u32(CUT_PAIR_STREAM_TREE_BYTES),
+        "the stream's input starts where the tree ends"
+    );
+    let cut_stream_error = decoded_error(
+        decode_entry(cut_stream_entry, &cut_stream_bytes),
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the cut pair stream",
+    );
+    assert_eq!(
+        cut_stream_error,
+        DatError::Truncated {
+            at: u64::from(to_u32(
+                CUT_PAIR_STREAM_TREE_BYTES + CUT_PAIR_STREAM_POSITION
+            ))
+        },
+        "an LZSS stream that runs out mid pair reports the payload base plus the pair's first byte"
+    );
+
+    // The sixth refusal names a framed block inside a chain, and the offset it
+    // carries is the block's header start: the chain's payload base plus the
+    // block's position within the chain (DAT-018).
+    let empty_block_bytes = synthetic_chain_after_raw(ZERO_PAYLOAD_BLOCK_HEADER);
+    let empty_block_archive = synthetic_parse(
+        &empty_block_bytes,
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the zero length frame",
+    );
+    let empty_block_entry = empty_block_archive
+        .entries()
+        .first()
+        .expect("one chain entry");
+    assert_eq!(
+        empty_block_entry.offset,
+        to_u32(CHAIN_AFTER_RAW_TREE_BYTES),
+        "the chain's stored bytes start where the tree ends"
+    );
+    let empty_block_error = decoded_error(
+        decode_entry(empty_block_entry, &empty_block_bytes),
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the zero length frame",
+    );
+    assert_eq!(
+        empty_block_error,
+        DatError::EmptyBlock {
+            at: u64::from(to_u32(
+                CHAIN_AFTER_RAW_TREE_BYTES + CHAIN_SECOND_BLOCK_CURSOR
+            ))
+        },
+        "a zero length frame reports the start of the block header that declares it"
+    );
+
+    // The seventh refusal is the same block with a payload the chain does not
+    // carry, and it names the same place: the block's header start.
+    let oversized_bytes = synthetic_chain_after_raw(OVERSIZED_BLOCK_HEADER);
+    let oversized_archive = synthetic_parse(
+        &oversized_bytes,
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the oversized frame",
+    );
+    let oversized_entry = oversized_archive
+        .entries()
+        .first()
+        .expect("one chain entry");
+    let oversized_error = decoded_error(
+        decode_entry(oversized_entry, &oversized_bytes),
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the oversized frame",
+    );
+    assert_eq!(
+        oversized_error,
+        DatError::OutOfBounds {
+            at: u64::from(to_u32(CHAIN_AFTER_RAW_TREE_BYTES + CHAIN_SECOND_BLOCK_CURSOR))
+        },
+        "a frame whose payload runs past the chain reports the start of the block header that declares it"
     );
 }
 
