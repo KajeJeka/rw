@@ -726,6 +726,14 @@ import hashlib
 import re
 import sys
 
+# The gate reads this tool's output with the shell, and the shell reads a
+# line ending as a line ending and nothing else. Python writes CRLF on
+# Windows, and a CR at the end of a path is a path that does not exist.
+try:
+    sys.stdout.reconfigure(newline='\n')
+except AttributeError:
+    pass
+
 MARKER = re.compile(r'^[ \t]*#\[test\]')
 FNNAME = re.compile(
     r'^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?(?:async[ \t]+)?(?:unsafe[ \t]+)?'
