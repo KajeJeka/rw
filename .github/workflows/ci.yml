@@ -7,8 +7,22 @@
 # point that counts as a full gate. This workflow deliberately has no step that sets
 # FO1_DATA, no step that runs `cargo test -- --ignored`, no step that downloads an
 # archive, and no step that reaches any network endpoint beyond the runner's own
-# toolchain provisioning. Every test executed here builds its own synthetic input in
+# toolchain provisioning and the crates.io download of the two cargo subcommands the
+# gate itself expects. Every test executed here builds its own synthetic input in
 # code.
+#
+# WHAT THIS WORKFLOW RUNS
+#
+# tools/gate.sh has ten steps. This workflow runs the five of them that need no
+# game data, no private term list and no base ref, in the gate's own order, with
+# the gate's own commands. It calls the repository's own scripts; it does not
+# reimplement a check.
+#
+# The step below prints the whole table: the five steps this workflow runs and the
+# five it does not, with the reason for each one it does not run. A reader of this
+# log must be able to tell that the install steps are skipped because CI holds no
+# game data, and that the mutation step is skipped because it is slow. The last
+# step prints the outcome of every step that ran.
 
 name: ci
 
@@ -38,7 +52,10 @@ jobs:
     # not reliably preserve it. Contributors running the same scripts on Windows
     # need Git for Windows' bundled bash; they are not on PATH by default.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # The gate's own five steps take a few minutes. The ceiling leaves room for
+    # the two cargo subcommand installs, which compile from source, and for a
+    # slow runner.
+    timeout-minutes: 45
 
     steps:
       # Pinned by tag rather than by commit SHA. A SHA pin is the stronger form and
@@ -55,33 +72,168 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
 
-      - name: Formatting
-        run: cargo fmt --all --check
+      - name: Install cargo-deny
+        # The gate's step 3 runs `cargo deny check` and treats a missing cargo-deny
+        # as a skipped step, which the gate counts as a failure. The version is
+        # the one the repository names, pinned so that CI proves what the gate
+        # proves and not what a newer release happens to report.
+        run: cargo install cargo-deny --version 0.20.2 --locked
 
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Documentation
-        run: cargo doc --workspace --no-deps
-        env:
-          RUSTDOCFLAGS: -D warnings
+      - name: Which gate steps this workflow runs, and which it does not
+        run: |
+          cat <<'EOF'
+          === the gate has ten steps; this workflow runs five of them ===
+          #
+          # The five below need no game data, no private term list and no base
+          # ref. They run in the gate's own order, with the gate's own commands,
+          # and each one calls the repository's own script.
+          #
+          #   step 2  public hygiene
+          #       bash tools/check_public.sh
+          #   step 3  formatting, lints, layering
+          #       cargo fmt --all -- --check
+          #       cargo clippy --workspace --all-targets -- -D warnings
+          #       RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps
+          #       bash tools/check_layers.sh
+          #       bash tools/lint_rules.sh
+          #       bash tools/lint_tests.sh
+          #       cargo deny check
+          #   step 4  workspace tests
+          #       cargo test --workspace --release
+          #   step 7  count check
+          #       bash tools/check_counts.sh
+          #   step 9  traceability
+          #       bash tools/check_trace.sh
+          #
+          # The gate's step 3 also compares the dev-only band that
+          # tools/check_layers.sh reports with the one tools/gate.sh reads from
+          # tools/layers.txt. That comparison lives inside tools/gate.sh, so it
+          # runs in the gate and not here.
+          #
+          # === the five steps this workflow does NOT run ===
+          #
+          #   step 1  protected paths
+          #       It compares the protected paths against a base ref, and its
+          #       verdict is the owner's approval of a change to one of them.
+          #       The approval is CODEOWNERS' job and not a measurement CI can
+          #       make. In this repository the spec, test, gate-tooling and CI
+          #       roles each own a protected path by design, so this check would
+          #       be red for every legitimate change, including this workflow.
+          #       tools/gate.sh runs it before a push, against origin/main.
+          #
+          #   step 5  install fingerprint
+          #       It reads the player's own copy of the game through FO1_DATA.
+          #       CI holds no game data and may never fetch any: a fingerprint of
+          #       nothing is not a check.
+          #
+          #   step 6  ignored tests
+          #       It runs the #[ignore]d tests against the install that step 5
+          #       verifies. CI has no install, so there is nothing to test.
+          #
+          #   step 8  fail before, pass after
+          #       It builds the base tree to prove that a changed test fails
+          #       there. It needs a base ref and a second build, and for the
+          #       three install gate test files it is not measurable at all
+          #       without the install. tools/gate.sh runs it.
+          #
+          #   step 10  mutation testing
+          #       It costs about half an hour for the fast scope, so it does not
+          #       belong in the per-push gate. .github/workflows/mutation.yml runs
+          #       it weekly, on the synthetic scope, and reports the counts and
+          #       every survivor.
+          EOF
 
       # Both scripts read the owner's private term list and the Community Edition
       # identifier list from the environment when they are present. Neither exists
       # here and neither may be fetched, so both are declared empty. A script must
       # degrade to a narrower scan in that case, not fail.
-      - name: Public hygiene
+      - name: "gate step 2: public hygiene"
+        id: step2
         run: bash tools/check_public.sh
         env:
           FO1_PRIVATE_TERMS: ""
           FO1_REF: ""
 
-      - name: Layering
+      - name: "gate step 3a: formatting"
+        id: step3a
+        run: cargo fmt --all -- --check
+
+      - name: "gate step 3b: clippy"
+        id: step3b
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: "gate step 3c: documentation"
+        id: step3c
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      - name: "gate step 3d: layering"
+        id: step3d
         run: bash tools/check_layers.sh
         env:
           FO1_REF: ""
 
+      - name: "gate step 3e: rule lints"
+        id: step3e
+        run: bash tools/lint_rules.sh
+
+      - name: "gate step 3f: test lints"
+        id: step3f
+        run: bash tools/lint_tests.sh
+
+      - name: "gate step 3g: dependency policy"
+        id: step3g
+        run: cargo deny check
+
       # SYNTHETIC ONLY. Never `--ignored` here: those tests read the player's
-      # install through FO1_DATA, and CI holds none.
-      - name: Tests
-        run: cargo test --workspace
+      # install through FO1_DATA, and CI holds none. The release profile is the
+      # one the gate uses, because it keeps the overflow checks on.
+      - name: "gate step 4: workspace tests"
+        id: step4
+        run: cargo test --workspace --release
+
+      - name: "gate step 7: count check"
+        id: step7
+        run: bash tools/check_counts.sh
+
+      - name: "gate step 9: traceability"
+        id: step9
+        run: bash tools/check_trace.sh
+
+      - name: The gate steps this workflow ran, and the ones it did not
+        # Always, so a reader of a red run still sees what was not checked.
+        if: always()
+        run: |
+          cat <<'EOF'
+          === gate steps this workflow did not run ===
+          #
+          #   step 1  protected paths      the owner's approval of a change to a
+          #                                  protected path; tools/gate.sh runs it
+          #                                  against origin/main before a push
+          #   step 5  install fingerprint  it reads the player's copy of the game
+          #                                  through FO1_DATA, and CI holds none
+          #   step 6  ignored tests        it tests against the install that
+          #                                  step 5 verifies, and CI has none
+          #   step 8  fail before, pass    it builds the base tree to prove a
+          #           after                 changed test fails there; it needs a
+          #                                  base ref and, for the install gate
+          #                                  test files, the install
+          #   step 10 mutation testing    it costs about half an hour; the weekly
+          #                                  workflow .github/workflows/mutation.yml
+          #                                  runs it on the synthetic scope
+          EOF
+          {
+            printf '\n=== the gate steps this workflow ran ===\n'
+            printf 'step 2  public hygiene              %s\n' "${{ steps.step2.outcome }}"
+            printf 'step 3a formatting                 %s\n' "${{ steps.step3a.outcome }}"
+            printf 'step 3b clippy                     %s\n' "${{ steps.step3b.outcome }}"
+            printf 'step 3c documentation              %s\n' "${{ steps.step3c.outcome }}"
+            printf 'step 3d layering                   %s\n' "${{ steps.step3d.outcome }}"
+            printf 'step 3e rule lints                 %s\n' "${{ steps.step3e.outcome }}"
+            printf 'step 3f test lints                 %s\n' "${{ steps.step3f.outcome }}"
+            printf 'step 3g dependency policy          %s\n' "${{ steps.step3g.outcome }}"
+            printf 'step 4  workspace tests             %s\n' "${{ steps.step4.outcome }}"
+            printf 'step 7  count check                 %s\n' "${{ steps.step7.outcome }}"
+            printf 'step 9  traceability                %s\n' "${{ steps.step9.outcome }}"
+          }
