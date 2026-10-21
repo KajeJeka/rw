@@ -1056,8 +1056,8 @@ read_records() {
         function split_record(line,   count, rest, at) {
             count = 0
             rest = line
-            R1 = ""; R2 = ""; R3 = ""; R4 = ""; R5 = ""; R6 = ""; R7 = ""
-            while (count < 6) {
+            R1 = ""; R2 = ""; R3 = ""; R4 = ""; R5 = ""; R6 = ""
+            while (count < 5) {
                 at = index(rest, " :: ")
                 if (at == 0) break
                 count++
@@ -1065,13 +1065,12 @@ read_records() {
                 else if (count == 2) R2 = trim(substr(rest, 1, at - 1))
                 else if (count == 3) R3 = trim(substr(rest, 1, at - 1))
                 else if (count == 4) R4 = trim(substr(rest, 1, at - 1))
-                else if (count == 5) R5 = trim(substr(rest, 1, at - 1))
-                else R6 = trim(substr(rest, 1, at - 1))
+                else R5 = trim(substr(rest, 1, at - 1))
                 rest = substr(rest, at + 3)
             }
-            if (count < 6) return 0
-            R7 = trim(rest)
-            if (R1 == "" || R2 == "" || R3 == "" || R4 == "" || R5 == "" || R6 == "" || R7 == "") return 0
+            if (count < 5) return 0
+            R6 = trim(rest)
+            if (R1 == "" || R2 == "" || R3 == "" || R4 == "" || R5 == "" || R6 == "") return 0
             return 1
         }
         /^##[[:space:]]+Recorded mutation kills[[:space:]]*$/ { insec = 1; next }
@@ -1088,7 +1087,7 @@ read_records() {
                 print "MALFORMED\t" line
                 next
             }
-            print "OK\t" R1 "\t" R2 "\t" R3 "\t" R4 "\t" R5 "\t" R6 "\t" R7
+            print "OK\t" R1 "\t" R2 "\t" R3 "\t" R4 "\t" R5 "\t" R6
         }
     ' "$NOTES_FILE"
 }
