@@ -1,6 +1,43 @@
 #!/usr/bin/env bash
-# Gate test count floors. The gate's step 7, extracted into a script so that
-# tools/gate.sh and the CI workflow run the SAME code instead of two copies.
+# Gate test count floors. This is the count check the CI workflow runs, and it
+# is the implementation the gate's step 7 should be.
+#
+# THERE IS STILL A SECOND COPY, AND THIS FILE SAYS SO.
+#
+# tools/gate.sh step 7 carries its own inline copy of this check: the block
+# that reads expected_counts.toml, counts the `#[test]` lines in the HEAD tree
+# and compares them with the floors. The two agree today - a reviewer compared
+# them side by side in a throwaway clone and found the same verdict in every
+# case - but two copies drift silently, and the next edit to one of them will
+# not be seen by the other. tools/gate.sh belongs to the gate lane, so this
+# file cannot delete that copy; what it can do is say exactly what the gate
+# lane has to change.
+#
+# WHAT THE GATE LANE HAS TO DO, EXACTLY
+#
+#   1. Delete the inline block of tools/gate.sh step 7: the "{ printf
+#      '\n=== step 7/10: 7 count check ===\n' ... }" group at the lines
+#      475-610, and the count_tests_in_head helper at the lines 462-467 that
+#      only that block uses. KEEP the head_has_path helper at the lines
+#      470-472: step 8 uses it to check the files an exemption or a recorded
+#      mutation kill names.
+#   2. Replace the deleted block with a call to this script, through the
+#      gate's own run_step, so that the row the gate writes for step 7 and
+#      the gate's exit status come out of this one implementation:
+#
+#          run_step 7 '7 count check' bash tools/check_counts.sh || true
+#
+#      run_step prints the command's output and records the verdict, so the
+#      report row reads the way every other row reads, and the "|| true" keeps
+#      the gate's rule that every step runs whatever the earlier steps did.
+#   3. Note the one behaviour difference: for a MISSING expected_counts.toml
+#      the inline copy records a skip (a required skip is a FAIL for the gate)
+#      and this script records a FAIL. Both make the gate red; only the
+#      wording of the report row changes.
+#
+# Until that change lands, the CI workflow runs this script for its own step 7
+# and does NOT judge the gate's step 7 row, so the drift between the two copies
+# cannot turn CI red for a reason the CI lane does not own.
 #
 # expected_counts.toml is `key value`, one per line, and EVERY key in it is a
 # floor this script enforces. A key the script does not understand fails it: a
