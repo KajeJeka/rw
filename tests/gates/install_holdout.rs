@@ -44,31 +44,42 @@
 //!
 //! ```text
 //! holdout dat: FAILED dat_0001_stored_single_byte: decoded size mismatch
-//! holdout dat: 32 cases, 31 passed
+//! holdout dat: 60 cases, 59 passed
+//! ```
+//!
+//! A failure that belongs to the whole part rather than to one case names the
+//! part's scope instead of a case name, in the same form (HOLD-027):
+//!
+//! ```text
+//! holdout exe: FAILED install: references directory not set
+//! holdout exe: 0 cases, 0 passed
 //! ```
 //!
 //! A failing line never prints the expected bytes, the expected digest or any
 //! part of the archive: the implementer learns which case failed and what kind
-//! of failure it was, and nothing about the answer.
+//! of failure it was, and nothing about the answer. The line that follows it
+//! names the condition in words, because the reason itself is a fixed token a
+//! machine reads, and a token cannot carry the line number, the count or the
+//! file that HOLD-026 asks the failure to name.
 //!
 //! The summary is printed by the test itself, so a run that passes shows it
 //! under `--nocapture`; a run that fails always shows it, because a failing
 //! test's output is printed either way.
 //!
-//! # Two conditions the fixed vocabulary does not name
+//! # The counts
 //!
-//! HOLD-027 fixes the reason vocabulary, and two of the conditions HOLD-026
-//! lists have no token of their own: a vector file whose bytes are not a legal
-//! hex archive, and a file in `dat/` or `exe/` that the manifest does not
-//! declare. Both are reported with the closest token the fixed vocabulary has,
-//! `manifest unreadable`, and with a detail line that names the condition. A
-//! new token would have been a reason outside the vocabulary the spec fixes.
+//! The number of cases is never hard-coded here. HOLD-009 says the count in
+//! the manifest is what the reader checks against, and HOLD-029 and HOLD-031
+//! fix the count of the first milestone's set — 60 DAT vectors covering 32
+//! families, 12 executable table vectors covering 16 families — as a rule
+//! about the vectors and not about the reader. The reader compares the count
+//! it read with the count the manifest declares, with equality.
 //!
 //! # The file name
 //!
 //! HOLD-025 fixes the name as `holdout.rs`. The owner's task for this file
 //! names it `install_holdout.rs`, which is the name the gate's count file and
-//! its `install_` floor expect, so that is the name it carries.
+//! its `install_holdout` floor expect, so that is the name it carries.
 
 // Gate tests are test code. `clippy.toml` sets `allow-unwrap-in-tests` and its
 // siblings, which cover a `#[cfg(test)]` module or a `#[test]` function body.
@@ -87,7 +98,7 @@ use std::path::{Path, PathBuf};
 
 use fo1_dat::{decode_entry, DatArchive};
 use fo1_exe::{PeImage, IMAGE_BASE};
-use fo1_tests::{holdout_manifest_path, holdout_root, sha256_of_slice, Install};
+use fo1_tests::{holdout_manifest_path, holdout_root, sha256_of_slice, HarnessError, Install};
 
 // --- the reason vocabulary of HOLD-027 ---------------------------------------
 
@@ -97,12 +108,18 @@ const REASON_MANIFEST_UNREADABLE: &str = "manifest unreadable";
 const REASON_MANIFEST_VERSION: &str = "manifest version not understood";
 /// `manifest count mismatch` (HOLD-027).
 const REASON_MANIFEST_COUNT: &str = "manifest count mismatch";
+/// `references directory not set` (HOLD-027).
+const REASON_REFERENCES_NOT_SET: &str = "references directory not set";
+/// `undeclared file in the vector folder` (HOLD-027).
+const REASON_UNDECLARED_FILE: &str = "undeclared file in the vector folder";
 /// `vector file missing` (HOLD-027).
 const REASON_VECTOR_MISSING: &str = "vector file missing";
 /// `vector file size mismatch` (HOLD-027).
 const REASON_VECTOR_SIZE: &str = "vector file size mismatch";
 /// `vector file digest mismatch` (HOLD-027).
 const REASON_VECTOR_DIGEST: &str = "vector file digest mismatch";
+/// `vector file malformed` (HOLD-027).
+const REASON_VECTOR_MALFORMED: &str = "vector file malformed";
 /// `archive parse failed` (HOLD-027).
 const REASON_ARCHIVE_PARSE: &str = "archive parse failed";
 /// `entry not found` (HOLD-027).
@@ -121,6 +138,18 @@ const REASON_MAPPING: &str = "reader mapping disagrees with the vector offset";
 const REASON_BUILD: &str = "executable is not the reference build";
 /// `vector offset outside the executable` (HOLD-027).
 const REASON_OFFSET_OUTSIDE: &str = "vector offset outside the executable";
+
+// --- the scopes of HOLD-027 --------------------------------------------------
+
+/// The scope of a failure that belongs to the manifest (HOLD-027).
+const SCOPE_MANIFEST: &str = "manifest";
+/// The scope of a failure that belongs to the hold-out set (HOLD-027).
+const SCOPE_SET: &str = "set";
+/// The scope of a failure that belongs to the reference install (HOLD-027).
+const SCOPE_INSTALL: &str = "install";
+/// The scope of a failure that belongs to the executable at run time
+/// (HOLD-027).
+const SCOPE_EXECUTABLE: &str = "executable";
 
 // --- the manifest format of HOLD-004 to HOLD-013 -----------------------------
 
@@ -152,12 +181,17 @@ const DIGEST_CHARS: usize = 64;
 /// The number of hex characters the seed field carries (HOLD-008).
 const SEED_CHARS: usize = 64;
 
+/// The name of the manifest inside the hold-out folder (HOLD-003).
+const MANIFEST_FILE_NAME: &str = "manifest.txt";
+
+/// The name of the DAT vector folder (HOLD-003).
+const DAT_FOLDER_NAME: &str = "dat";
+
+/// The name of the executable table vector folder (HOLD-003).
+const EXE_FOLDER_NAME: &str = "exe";
+
 /// The label the hold-out archives are parsed under (DAT-030).
 const HOLDOUT_ORIGIN: &str = "holdout";
-
-/// The case name a manifest-level failure carries, because a manifest has no
-/// vector file of its own.
-const MANIFEST_CASE: &str = "manifest";
 
 // --- the vectors of HOLD-010 -------------------------------------------------
 
@@ -204,18 +238,28 @@ struct Manifest {
 /// One failure: the fixed reason of HOLD-027 and a detail that names the
 /// condition without carrying any vector data.
 struct Failure {
-    /// The case name: the vector file's stem, or `manifest`.
-    case: String,
+    /// The name the failing line carries: the vector file's stem, or the scope
+    /// of the whole part the failure belongs to.
+    name: String,
     /// One of the fixed reasons of HOLD-027.
     reason: &'static str,
     /// What went wrong, in words.
     detail: String,
 }
 
-/// Builds one failure.
-fn failure(case: &str, reason: &'static str, detail: String) -> Failure {
+/// Builds a failure of one case.
+fn case_failure(case: &str, reason: &'static str, detail: String) -> Failure {
     Failure {
-        case: case.to_string(),
+        name: case.to_string(),
+        reason,
+        detail,
+    }
+}
+
+/// Builds a failure that belongs to a whole part rather than to one case.
+fn scope_failure(scope: &'static str, reason: &'static str, detail: String) -> Failure {
+    Failure {
+        name: scope.to_string(),
         reason,
         detail,
     }
@@ -223,7 +267,7 @@ fn failure(case: &str, reason: &'static str, detail: String) -> Failure {
 
 /// Builds a failure of the manifest itself, which has no case name of its own.
 fn manifest_failure(reason: &'static str, detail: String) -> Failure {
-    failure(MANIFEST_CASE, reason, detail)
+    scope_failure(SCOPE_MANIFEST, reason, detail)
 }
 
 /// Builds a failure of one manifest line, with its number.
@@ -234,12 +278,12 @@ fn line_failure(line_number: usize, what: &str) -> Failure {
     )
 }
 
-/// Prints the failing line of one case, and the detail that names the
-/// condition (HOLD-027).
+/// Prints the failing line of one case or one scope, and the detail that names
+/// the condition (HOLD-027).
 fn print_failure(kind: &str, failure: &Failure) {
     println!(
         "holdout {kind}: FAILED {}: {}",
-        failure.case, failure.reason
+        failure.name, failure.reason
     );
     println!("holdout {kind}: {}", failure.detail);
 }
@@ -247,6 +291,17 @@ fn print_failure(kind: &str, failure: &Failure) {
 /// Prints the summary line of one part (HOLD-027).
 fn print_summary(kind: &str, cases: usize, passed: usize) {
     println!("holdout {kind}: {cases} cases, {passed} passed");
+}
+
+/// Reports a failure that belongs to the whole part: the failing line, the
+/// summary line of the part, and the panic that fails the test (HOLD-027).
+///
+/// A whole-part failure happens before any case runs, so the summary line is
+/// the one of zero cases.
+fn fail_part(kind: &str, failure: &Failure) -> ! {
+    print_failure(kind, failure);
+    print_summary(kind, 0, 0);
+    panic!("holdout {kind}: {}", failure.detail);
 }
 
 /// The case name of a vector: the vector file's stem (HOLD-027).
@@ -262,6 +317,19 @@ fn case_name(file: &str) -> String {
     stem.to_string()
 }
 
+/// The path of a vector file on disk (HOLD-010).
+///
+/// The manifest writes the field with `/` on every platform, whatever
+/// separator the platform uses for paths of its own. The field is split on
+/// `/` and the two halves are joined with the platform's own separator, so the
+/// two folders on disk are `dat` and `exe` everywhere.
+fn vector_path(root: &Path, file: &str) -> PathBuf {
+    let halves: Vec<&str> = file.split('/').collect();
+    // The `file` field is refused unless it holds exactly the folder and the
+    // file, so the two halves are always there.
+    root.join(halves[0]).join(halves[1])
+}
+
 // --- the manifest reader of HOLD-004 to HOLD-013 -----------------------------
 
 /// Reads the hold-out folder and the manifest, and refuses everything HOLD-012
@@ -274,33 +342,52 @@ fn read_holdout() -> Result<(PathBuf, Manifest), Failure> {
     let root = match holdout_root() {
         Ok(root) => root,
         Err(error) => {
-            return Err(manifest_failure(
-                REASON_MANIFEST_UNREADABLE,
-                error.to_string(),
+            return Err(scope_failure(
+                SCOPE_SET,
+                REASON_REFERENCES_NOT_SET,
+                format!("the hold-out folder cannot be located: {error}"),
             ))
         }
     };
     let manifest_path = match holdout_manifest_path() {
         Ok(path) => path,
         Err(error) => {
+            // The folder is there, so a manifest that is not inside it is the
+            // manifest's own failure and not the set's.
             return Err(manifest_failure(
                 REASON_MANIFEST_UNREADABLE,
-                error.to_string(),
-            ))
+                format!("the hold-out manifest cannot be located: {error}"),
+            ));
         }
     };
     let text = match fs::read_to_string(&manifest_path) {
         Ok(text) => text,
         Err(error) => {
-            return Err(manifest_failure(
-                REASON_MANIFEST_UNREADABLE,
-                format!(
+            let detail = match error.kind() {
+                std::io::ErrorKind::NotFound => {
+                    format!("the manifest {} does not exist", manifest_path.display())
+                }
+                std::io::ErrorKind::InvalidData => {
+                    format!("the manifest {} is not UTF-8", manifest_path.display())
+                }
+                _ => format!(
                     "the manifest {} could not be read: {error}",
                     manifest_path.display()
                 ),
-            ))
+            };
+            return Err(manifest_failure(REASON_MANIFEST_UNREADABLE, detail));
         }
     };
+    // HOLD-005: the file is UTF-8 and carries no byte order mark.
+    if text.starts_with('\u{feff}') {
+        return Err(manifest_failure(
+            REASON_MANIFEST_UNREADABLE,
+            format!(
+                "the manifest {} carries a UTF-8 byte order mark, and the format has none",
+                manifest_path.display()
+            ),
+        ));
+    }
     match parse_manifest(&text) {
         Ok(manifest) => Ok((root, manifest)),
         Err(failure) => Err(failure),
@@ -495,11 +582,13 @@ fn tokens_of(line: &str, line_number: usize) -> Result<Vec<&str>, Failure> {
     Ok(tokens)
 }
 
-/// A canonical decimal unsigned integer (HOLD-011).
+/// A canonical decimal unsigned integer of the width its field carries
+/// (HOLD-011).
 ///
 /// Digits only: no sign, no `0x` prefix, no thousands separator, no
 /// underscore. No leading zero, except that the value zero is written as the
-/// single character `0`.
+/// single character `0`. A number that does not fit the width of its field is
+/// refused and never truncated and never wrapped.
 fn parse_canonical_u64(token: &str, line_number: usize) -> Result<u64, Failure> {
     if token.is_empty() {
         return Err(line_failure(line_number, "the number is empty"));
@@ -575,7 +664,7 @@ fn parse_record(tokens: &[&str], line_number: usize) -> Result<Record, Failure> 
     let file_sha256 = parse_digest(tokens[3], line_number)?;
     match kind {
         "dat" => {
-            check_vector_file(file, "dat", "dat_", ".hex", line_number)?;
+            check_vector_file(file, DAT_FOLDER_NAME, "dat_", ".hex", line_number)?;
             let decoded_size = parse_canonical_u64(tokens[4], line_number)?;
             let decoded_sha256 = parse_digest(tokens[5], line_number)?;
             let path = tokens[6];
@@ -590,16 +679,22 @@ fn parse_record(tokens: &[&str], line_number: usize) -> Result<Record, Failure> 
             }))
         }
         "exe" => {
-            check_vector_file(file, "exe", "exe_", ".bin", line_number)?;
+            check_vector_file(file, EXE_FOLDER_NAME, "exe_", ".bin", line_number)?;
             let file_offset = parse_canonical_u64(tokens[4], line_number)?;
             let length = parse_canonical_u64(tokens[5], line_number)?;
             let va = parse_canonical_u64(tokens[6], line_number)?;
+            // HOLD-011: the virtual address is 32 bit wide, because that is the
+            // width the reader is addressed with. A number that does not fit
+            // is refused, never truncated and never wrapped.
             let va = match u32::try_from(va) {
                 Ok(va) => va,
                 Err(_) => {
                     return Err(line_failure(
                         line_number,
-                        "the virtual address does not fit a 32 bit address",
+                        &format!(
+                            "the virtual address {} does not fit a 32 bit address",
+                            tokens[6]
+                        ),
                     ))
                 }
             };
@@ -702,8 +797,16 @@ fn check_vector_file(
 
 /// Checks the `path` field of a DAT record (HOLD-016).
 ///
-/// The path is the composed path, already upper case, with its segments
-/// separated by a single backslash.
+/// The path is the composed path of the entry, and the reader never splits it
+/// back into the names it was made of: a directory name may itself hold a
+/// `\`. So the character rule is about the characters of the names, and the
+/// `\` that joins two names is the separator the path is made of and not one of
+/// the characters a name may hold.
+///
+/// What is checked here is therefore that the path is made of the characters
+/// the format allows, and that its separators are single ones: no leading
+/// `\`, no trailing `\` and no empty segment. The path itself is compared
+/// with the reader's own composed path as one string (HOLD-018 step 4).
 fn check_path(path: &str, line_number: usize) -> Result<(), Failure> {
     if path.is_empty() {
         return Err(line_failure(line_number, "the path is empty"));
@@ -714,10 +817,12 @@ fn check_path(path: &str, line_number: usize) -> Result<(), Failure> {
             || byte == b'.'
             || byte == b'_'
             || byte == b'-'
+            || byte == b'\\'
     }) {
         return Err(line_failure(
             line_number,
-            "the path must hold upper case ASCII letters, digits, dot, underscore and hyphen only",
+            "the path must hold upper case ASCII letters, digits, dot, underscore and hyphen, \
+             and the backslash that separates the names",
         ));
     }
     if path.starts_with('\\') || path.ends_with('\\') {
@@ -726,52 +831,146 @@ fn check_path(path: &str, line_number: usize) -> Result<(), Failure> {
             "the path must have no leading backslash and no trailing backslash",
         ));
     }
-    if path.split('\\').any(|segment| segment.is_empty()) {
-        return Err(line_failure(line_number, "the path has an empty segment"));
+    if path.contains("\\\\") {
+        return Err(line_failure(
+            line_number,
+            "the path has an empty segment, because two separators stand next to each other",
+        ));
     }
     Ok(())
 }
 
 // --- the set of the folder ---------------------------------------------------
 
-/// Checks that every file in `folder` is declared by the manifest (HOLD-026).
+/// Checks the hold-out folder against the layout of HOLD-003 (HOLD-026).
 ///
-/// A file in `dat/` or `exe/` that the manifest does not declare is a failure
-/// and not something to ignore: it is what makes the manifest a statement about
-/// the whole set and not a list of some of it.
-fn undeclared_file(root: &Path, folder: &str, declared: &[String]) -> Option<Failure> {
+/// The folder holds the manifest and the two vector folders, and nothing else.
+/// A file or a directory the layout does not name is a failure of the whole
+/// part and not something to ignore.
+fn check_layout(root: &Path) -> Option<Failure> {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) => {
+            return Some(scope_failure(
+                SCOPE_SET,
+                REASON_UNDECLARED_FILE,
+                format!(
+                    "the hold-out folder {} cannot be listed: {error}",
+                    root.display()
+                ),
+            ))
+        }
+    };
+    let names: Vec<(String, bool)> = match entries.collect::<Result<Vec<_>, _>>() {
+        Ok(entries) => entries
+            .into_iter()
+            .map(|entry| {
+                let is_dir = match entry.file_type() {
+                    Ok(kind) => kind.is_dir(),
+                    Err(_) => false,
+                };
+                (entry.file_name().to_string_lossy().to_string(), is_dir)
+            })
+            .collect(),
+        Err(error) => {
+            return Some(scope_failure(
+                SCOPE_SET,
+                REASON_UNDECLARED_FILE,
+                format!(
+                    "the hold-out folder {} cannot be listed: {error}",
+                    root.display()
+                ),
+            ))
+        }
+    };
+    let stray = names.iter().find(|(name, is_dir)| {
+        if *is_dir {
+            *name != DAT_FOLDER_NAME && *name != EXE_FOLDER_NAME
+        } else {
+            *name != MANIFEST_FILE_NAME
+        }
+    });
+    stray.map(|(name, is_dir)| {
+        let what = if *is_dir { "directory" } else { "file" };
+        scope_failure(
+            SCOPE_SET,
+            REASON_UNDECLARED_FILE,
+            format!(
+                "the {what} {name} is in the hold-out folder, and the layout of HOLD-003 names \
+                 only manifest.txt, dat and exe"
+            ),
+        )
+    })
+}
+
+/// Checks one vector folder (HOLD-003, HOLD-026).
+///
+/// The folder holds exactly the vector files the manifest declares, and nothing
+/// else: no directory and no file the manifest does not declare.
+fn check_vector_folder(root: &Path, folder: &str, declared: &[String]) -> Option<Failure> {
     let directory = root.join(folder);
+    if !directory.is_dir() {
+        return Some(scope_failure(
+            SCOPE_SET,
+            REASON_UNDECLARED_FILE,
+            format!("the {folder} folder is not there, and the layout of HOLD-003 names it"),
+        ));
+    }
     let entries = match fs::read_dir(&directory) {
         Ok(entries) => entries,
         Err(error) => {
-            return Some(manifest_failure(
-                REASON_MANIFEST_UNREADABLE,
-                format!("the {folder} folder cannot be listed: {error}"),
+            return Some(scope_failure(
+                SCOPE_SET,
+                REASON_UNDECLARED_FILE,
+                format!(
+                    "the {folder} folder {} cannot be listed: {error}",
+                    directory.display()
+                ),
             ))
         }
     };
-    let names: Vec<String> = match entries.collect::<Result<Vec<_>, _>>().map(|entries| {
-        entries
+    let names: Vec<(String, bool)> = match entries.collect::<Result<Vec<_>, _>>() {
+        Ok(entries) => entries
             .into_iter()
-            .map(|entry| entry.file_name().to_string_lossy().to_string())
-            .collect()
-    }) {
-        Ok(names) => names,
+            .map(|entry| {
+                let is_dir = match entry.file_type() {
+                    Ok(kind) => kind.is_dir(),
+                    Err(_) => false,
+                };
+                (entry.file_name().to_string_lossy().to_string(), is_dir)
+            })
+            .collect(),
         Err(error) => {
-            return Some(manifest_failure(
-                REASON_MANIFEST_UNREADABLE,
-                format!("the {folder} folder cannot be listed: {error}"),
+            return Some(scope_failure(
+                SCOPE_SET,
+                REASON_UNDECLARED_FILE,
+                format!(
+                    "the {folder} folder {} cannot be listed: {error}",
+                    directory.display()
+                ),
             ))
         }
     };
-    let undeclared = names
+    let offender = names
         .iter()
-        .find(|name| !declared.contains(&format!("{folder}/{name}")));
-    undeclared.map(|name| {
-        manifest_failure(
-            REASON_MANIFEST_UNREADABLE,
-            format!("the file {folder}/{name} is not declared in the manifest"),
-        )
+        .find(|(name, is_dir)| *is_dir || !declared.contains(&format!("{folder}/{name}")));
+    offender.map(|(name, is_dir)| {
+        if *is_dir {
+            scope_failure(
+                SCOPE_SET,
+                REASON_UNDECLARED_FILE,
+                format!(
+                    "the directory {folder}/{name} is in the vector folder, and only the vector \
+                     files live there"
+                ),
+            )
+        } else {
+            scope_failure(
+                SCOPE_SET,
+                REASON_UNDECLARED_FILE,
+                format!("the file {folder}/{name} is not declared in the manifest"),
+            )
+        }
     })
 }
 
@@ -795,11 +994,11 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
 
     // Step 1: the file exists, its byte length on disk is `file_bytes`, and the
     // SHA-256 of its bytes is `file_sha256`.
-    let path = root.join(&vector.file);
+    let path = vector_path(root, &vector.file);
     let bytes = match fs::read(&path) {
         Ok(bytes) => bytes,
         Err(error) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_VECTOR_MISSING,
                 format!("the vector file {} could not be read: {error}", vector.file),
@@ -807,7 +1006,7 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
         }
     };
     if bytes.len() as u64 != vector.file_bytes {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_VECTOR_SIZE,
             format!(
@@ -821,7 +1020,7 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
     let digest = match sha256_of_slice(&bytes) {
         Ok(digest) => digest,
         Err(error) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_VECTOR_DIGEST,
                 format!(
@@ -832,7 +1031,7 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
         }
     };
     if digest != vector.file_sha256 {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_VECTOR_DIGEST,
             format!(
@@ -843,12 +1042,16 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
     }
 
     // Step 2: the file's bytes are decoded into the archive bytes.
+    //
+    // HOLD-015: a file whose bytes are not what its kind says they are is a
+    // malformed vector file. The archive those bytes decode to is a different
+    // thing, and a failure to parse it is `archive parse failed`.
     let archive_bytes = match decode_hex_file(&bytes) {
         Ok(archive_bytes) => archive_bytes,
         Err(detail) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
-                REASON_ARCHIVE_PARSE,
+                REASON_VECTOR_MALFORMED,
                 format!(
                     "the vector file {} does not hold a hex archive: {detail}",
                     vector.file
@@ -861,7 +1064,7 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
     let archive = match DatArchive::parse(&archive_bytes, HOLDOUT_ORIGIN) {
         Ok(archive) => archive,
         Err(error) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_ARCHIVE_PARSE,
                 format!("the archive in {} does not parse: {error}", vector.file),
@@ -877,7 +1080,7 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
     let entry = match archive.find(&vector.path) {
         Some(entry) => entry,
         None => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_ENTRY_NOT_FOUND,
                 format!(
@@ -892,7 +1095,7 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
     let decoded = match decode_entry(entry, &archive_bytes) {
         Ok(decoded) => decoded,
         Err(error) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_DECODE,
                 format!("the entry in {} does not decode: {error}", vector.file),
@@ -902,7 +1105,7 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
 
     // Step 6: the decoded bytes are exactly `decoded_size` bytes long.
     if decoded.len() as u64 != vector.decoded_size {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_DECODED_SIZE,
             format!(
@@ -918,7 +1121,7 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
     let decoded_digest = match sha256_of_slice(&decoded) {
         Ok(decoded_digest) => decoded_digest,
         Err(error) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_DECODED_DIGEST,
                 format!(
@@ -929,7 +1132,7 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
         }
     };
     if decoded_digest != vector.decoded_sha256 {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_DECODED_DIGEST,
             format!(
@@ -943,7 +1146,7 @@ fn run_dat_case(root: &Path, vector: &DatVector) -> Option<Failure> {
     // `decoded_size`. Redundant with step 6 for a correct reader, and kept
     // because it catches a vector whose own numbers disagree.
     if u64::from(entry.uncompressed_size) != vector.decoded_size {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_DECODED_SIZE,
             format!(
@@ -1015,7 +1218,7 @@ fn run_exe_case(
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(error) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_VECTOR_MISSING,
                 format!("the vector file {} could not be read: {error}", vector.file),
@@ -1023,7 +1226,7 @@ fn run_exe_case(
         }
     };
     if bytes.len() as u64 != vector.file_bytes || bytes.len() as u64 != vector.length {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_VECTOR_SIZE,
             format!(
@@ -1038,7 +1241,7 @@ fn run_exe_case(
     let digest = match sha256_of_slice(&bytes) {
         Ok(digest) => digest,
         Err(error) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_VECTOR_DIGEST,
                 format!(
@@ -1049,7 +1252,7 @@ fn run_exe_case(
         }
     };
     if digest != vector.file_sha256 {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_VECTOR_DIGEST,
             format!(
@@ -1061,8 +1264,13 @@ fn run_exe_case(
 
     // Step 2: `length` is at least one, and the window does not pass the end
     // of the executable.
+    //
+    // HOLD-023: the sum is computed in checked arithmetic and a sum that would
+    // overflow is refused like a window that runs past the end of the
+    // executable. A `length` that does not fit the machine's own `usize` is
+    // refused the same way (HOLD-011).
     if vector.length < 1 {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_OFFSET_OUTSIDE,
             format!(
@@ -1074,18 +1282,19 @@ fn run_exe_case(
     let end = match vector.file_offset.checked_add(vector.length) {
         Some(end) => end,
         None => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_OFFSET_OUTSIDE,
                 format!(
-                    "the window of {} does not fit the executable at all",
+                    "the window of {} does not fit the executable at all, because the offset \
+                     and the length do not fit together",
                     vector.file
                 ),
             ))
         }
     };
     if end > exe_bytes.len() as u64 {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_OFFSET_OUTSIDE,
             format!(
@@ -1100,7 +1309,7 @@ fn run_exe_case(
     let length = match usize::try_from(vector.length) {
         Ok(length) => length,
         Err(_) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_OFFSET_OUTSIDE,
                 format!("the window of {} does not fit a usize", vector.file),
@@ -1110,7 +1319,7 @@ fn run_exe_case(
     let read = match image.read_va(vector.va, length) {
         Ok(read) => read,
         Err(error) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_READER_BYTES,
                 format!(
@@ -1121,7 +1330,7 @@ fn run_exe_case(
         }
     };
     if read != bytes.as_slice() {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_READER_BYTES,
             format!(
@@ -1136,7 +1345,7 @@ fn run_exe_case(
     let section = match image.section_for(vector.va) {
         Some(section) => section,
         None => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_MAPPING,
                 format!("no section owns the virtual address of {}", vector.file),
@@ -1146,7 +1355,7 @@ fn run_exe_case(
     let mapped = match mapped_offset(vector.va, section.raw_pointer, section.virtual_address) {
         Some(mapped) => mapped,
         None => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_MAPPING,
                 format!(
@@ -1157,7 +1366,7 @@ fn run_exe_case(
         }
     };
     if mapped != vector.file_offset {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_MAPPING,
             format!(
@@ -1173,7 +1382,7 @@ fn run_exe_case(
     let start = match usize::try_from(vector.file_offset) {
         Ok(start) => start,
         Err(_) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_OFFSET_OUTSIDE,
                 format!("the offset of {} does not fit a usize", vector.file),
@@ -1183,7 +1392,7 @@ fn run_exe_case(
     let end = match usize::try_from(end) {
         Ok(end) => end,
         Err(_) => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_OFFSET_OUTSIDE,
                 format!("the window end of {} does not fit a usize", vector.file),
@@ -1193,7 +1402,7 @@ fn run_exe_case(
     let at_offset = match exe_bytes.get(start..end) {
         Some(at_offset) => at_offset,
         None => {
-            return Some(failure(
+            return Some(case_failure(
                 &case,
                 REASON_OFFSET_OUTSIDE,
                 format!(
@@ -1204,7 +1413,7 @@ fn run_exe_case(
         }
     };
     if at_offset != bytes.as_slice() {
-        return Some(failure(
+        return Some(case_failure(
             &case,
             REASON_READER_BYTES,
             format!(
@@ -1241,24 +1450,17 @@ fn holdout_dat_vectors_decode_to_the_declared_size_and_digest() {
 
     let (root, manifest) = match read_holdout() {
         Ok(holdout) => holdout,
-        Err(failure) => {
-            print_failure("dat", &failure);
-            print_summary("dat", 0, 0);
-            panic!(
-                "holdout dat: the hold-out set could not be read: {}",
-                failure.detail
-            );
-        }
+        Err(failure) => fail_part("dat", &failure),
     };
 
+    // HOLD-003 and HOLD-026: the folder holds the manifest and the two vector
+    // folders, and nothing else.
+    if let Some(failure) = check_layout(&root) {
+        fail_part("dat", &failure);
+    }
     let declared = declared_files(&manifest.dat);
-    if let Some(failure) = undeclared_file(&root, "dat", &declared) {
-        print_failure("dat", &failure);
-        print_summary("dat", 0, 0);
-        panic!(
-            "holdout dat: the hold-out set is not what the manifest describes: {}",
-            failure.detail
-        );
+    if let Some(failure) = check_vector_folder(&root, DAT_FOLDER_NAME, &declared) {
+        fail_part("dat", &failure);
     }
 
     for vector in manifest.dat.iter() {
@@ -1292,40 +1494,54 @@ fn holdout_exe_table_vectors_match_the_reference_executable_bytes() {
 
     let (root, manifest) = match read_holdout() {
         Ok(holdout) => holdout,
-        Err(failure) => {
-            print_failure("exe", &failure);
-            print_summary("exe", 0, 0);
-            panic!(
-                "holdout exe: the hold-out set could not be read: {}",
-                failure.detail
-            );
-        }
+        Err(failure) => fail_part("exe", &failure),
     };
 
+    // HOLD-003 and HOLD-026: the folder holds the manifest and the two vector
+    // folders, and nothing else.
+    if let Some(failure) = check_layout(&root) {
+        fail_part("exe", &failure);
+    }
     let declared = declared_exe_files(&manifest.exe);
-    if let Some(failure) = undeclared_file(&root, "exe", &declared) {
-        print_failure("exe", &failure);
-        print_summary("exe", 0, 0);
-        panic!(
-            "holdout exe: the hold-out set is not what the manifest describes: {}",
-            failure.detail
-        );
+    if let Some(failure) = check_vector_folder(&root, EXE_FOLDER_NAME, &declared) {
+        fail_part("exe", &failure);
     }
 
     // HOLD-022: the reader reads the player's own copy of the reference
     // executable, reached through the install harness.
+    //
+    // HOLD-026: an install that is missing or unreachable fails this part
+    // whole, and only this part: the DAT part needs no install at all.
     let install = match Install::from_env() {
         Ok(install) => install,
         Err(error) => {
-            print_summary("exe", 0, 0);
-            panic!("holdout exe: the reference install is unreachable: {error}");
+            // An install that is there but is not the reference install is a
+            // build that is not the reference build. Anything else means the
+            // install is missing or unreachable.
+            let failure = match &error {
+                HarnessError::UnsupportedInstall { .. } => scope_failure(
+                    SCOPE_EXECUTABLE,
+                    REASON_BUILD,
+                    format!("the install at run time is not the reference install: {error}"),
+                ),
+                _ => scope_failure(
+                    SCOPE_INSTALL,
+                    REASON_REFERENCES_NOT_SET,
+                    format!("the reference install is missing or unreachable: {error}"),
+                ),
+            };
+            fail_part("exe", &failure);
         }
     };
     let exe_bytes = match install.read_archive(install.exe_path()) {
         Ok(exe_bytes) => exe_bytes,
         Err(error) => {
-            print_summary("exe", 0, 0);
-            panic!("holdout exe: the reference executable could not be read: {error}");
+            let failure = scope_failure(
+                SCOPE_INSTALL,
+                REASON_REFERENCES_NOT_SET,
+                format!("the reference install is missing or unreachable: {error}"),
+            );
+            fail_part("exe", &failure);
         }
     };
 
@@ -1336,20 +1552,18 @@ fn holdout_exe_table_vectors_match_the_reference_executable_bytes() {
     let image = match PeImage::require_reference_build(&exe_bytes) {
         Ok(image) => image,
         Err(error) => {
-            let failure = failure(
-                "executable",
+            let failure = scope_failure(
+                SCOPE_EXECUTABLE,
                 REASON_BUILD,
                 format!("the executable at run time is not the reference build: {error}"),
             );
-            print_failure("exe", &failure);
-            print_summary("exe", 0, 0);
-            panic!("holdout exe: the executable is not the reference build: {error}");
+            fail_part("exe", &failure);
         }
     };
 
     for vector in manifest.exe.iter() {
         cases += 1;
-        let path = root.join(&vector.file);
+        let path = vector_path(&root, &vector.file);
         if let Some(failure) = run_exe_case(&path, &exe_bytes, &image, vector) {
             print_failure("exe", &failure);
             failed += 1;
