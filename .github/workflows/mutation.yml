@@ -27,27 +27,36 @@
 #
 # WHAT IT COSTS
 #
-# The mutation run itself is about 12 minutes: 374 mutants at about 10 s each,
-# with one job. One job is not a performance setting, it is what makes the
-# survivor list a measurement: cargo-mutants copies the workspace into a
-# temporary directory and every parallel worker shares the ONE target
-# directory inside that copy, so a worker can be graded against a binary built
-# from a different mutation.
+# The mutation run is 374 mutants. The gate quotes 9.74 s per mutant for a run
+# of that size (tools/gate.sh), so a run of that size is about an hour, and the
+# owner's last measured run of this scope took 37 minutes (374 mutants: 333
+# caught, 15 missed, 26 unviable). The ceiling is set for the hour, because a
+# run that overruns proves nothing.
 #
-# With the toolchain, the two cargo subcommand installs and the gate's own
-# other steps, the job takes about 30 minutes of a 90 minute ceiling: roughly
-# 30 CI minutes a week. It is a scheduled job, so it never sits in a
-# contributor's push path.
+# One job is not a performance setting, it is what makes the survivor list a
+# measurement: cargo-mutants copies the workspace into a temporary directory and
+# every parallel worker shares the ONE target directory inside that copy, so a
+# worker can be graded against a binary built from a different mutation.
 #
-# WHEN IT MAY FAIL, AND WHEN IT SHOULD BE SKIPPED
+# With the toolchain, the two cargo subcommand installs (both compile from
+# source) and the gate's own other steps, the job needs about 80 minutes of a
+# 120 minute ceiling: roughly eighty CI minutes a week. It is a scheduled job,
+# so it never sits in a contributor's push path.
+#
+# WHEN IT MAY FAIL, AND WHEN IT IS NOT SKIPPED
 #
 # A scheduled workflow's failure does not block a merge, so a red weekly run is
 # a signal to the owner, not a gate. It may be allowed to fail while the
 # readers are under an approved refactor that changes the mutant set, and while
-# the pinned cargo-mutants release cannot be installed on the runner. It should
-# be skipped entirely when the tree is not green: the gate stops at its first
-# failure, so a broken tree means the mutation step never runs and the job says
-# so rather than reporting a clean run.
+# the pinned cargo-mutants release cannot be installed on the runner.
+#
+# This job is NOT skipped when the tree is not green. The gate runs every step
+# and reports every verdict: it does not stop at the first failure, so the
+# mutation step still runs on a red tree. The outcome is fail-safe, because a
+# broken suite catches fewer mutants, so more of them survive, so step 10
+# fails. What this job does not do is fail on a red tree for its own sake: the
+# verdict it reads is step 10's row and nothing else, so a clippy or a
+# documentation failure does not turn the weekly job red.
 #
 # NO SECRET, NO GAME DATA
 #
@@ -87,9 +96,10 @@ jobs:
     # than relying on the executable bit, because a checkout made on Windows does
     # not reliably preserve it.
     runs-on: ubuntu-24.04
-    # Thirty minutes of work and a slow runner. The ceiling is generous because
-    # a timeout mid-run proves nothing.
-    timeout-minutes: 90
+    # The mutation run alone is an hour by the per-mutant arithmetic and 37
+    # minutes measured, and the two cargo subcommand installs compile from
+    # source. The ceiling is generous because a timeout mid-run proves nothing.
+    timeout-minutes: 120
 
     steps:
       - name: Check out
