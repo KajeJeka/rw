@@ -1287,33 +1287,37 @@ check_mutation_record() {
 }
 
 # Run one test of one target and say what happened to it. The output of the
-# run is left in RUN_OUTPUT. A test that did not run is "absent", and an
-# ignored test is "ignored": neither measured anything.
+# run is written to the file the caller names, because a command substitution
+# runs in a subshell and a variable set there never reaches the caller. A
+# test that did not run is "absent", and an ignored test is "ignored":
+# neither measured anything.
 run_one_test() {
-    # run_one_test <work dir> <target dir> <target name> <test name>
-    local dir="$1" tdir="$2" target="$3" test="$4" out
+    # run_one_test <work dir> <target dir> <target name> <test name> <log file>
+    local dir="$1" tdir="$2" target="$3" test="$4" log="$5" out verdict
     if [ -n "$tdir" ]; then
         out=$(cd "$dir" && CARGO_TARGET_DIR="$tdir" \
             cargo test --release --test "$target" -- --exact "$test" 2>&1)
     else
         out=$(cd "$dir" && cargo test --release --test "$target" -- --exact "$test" 2>&1)
     fi
-    RUN_OUTPUT="$out"
-    run_outcome "$out"
+    printf '%s\n' "$out" >"$log"
+    verdict=$(run_outcome "$out")
+    printf '%s' "$verdict"
 }
 
 # The same run with --ignored, for the test that is #[ignore]d.
 run_one_test_ignored() {
-    # run_one_test_ignored <work dir> <target dir> <target name> <test name>
-    local dir="$1" tdir="$2" target="$3" test="$4" out
+    # run_one_test_ignored <work dir> <target dir> <target name> <test name> <log file>
+    local dir="$1" tdir="$2" target="$3" test="$4" log="$5" out verdict
     if [ -n "$tdir" ]; then
         out=$(cd "$dir" && CARGO_TARGET_DIR="$tdir" \
             cargo test --release --test "$target" -- --ignored --exact "$test" 2>&1)
     else
         out=$(cd "$dir" && cargo test --release --test "$target" -- --ignored --exact "$test" 2>&1)
     fi
-    RUN_OUTPUT="$out"
-    run_outcome "$out"
+    printf '%s\n' "$out" >"$log"
+    verdict=$(run_outcome "$out")
+    printf '%s' "$verdict"
 }
 
 # Every step runs, whatever the earlier steps did: see the header.
@@ -1531,8 +1535,10 @@ EOF
                         sname=$(printf '%s\n' "$tn" | sed 's/.*:://')
                         # The base run: the test must fail there. The head
                         # run: the test must pass here.
-                        base_verdict=$(run_one_test "$BASE_WT" "$BASE_TARGET" "$name" "$tn")
-                        head_verdict=$(run_one_test "$REPO_ROOT" '' "$name" "$tn")
+                        base_verdict=$(run_one_test "$BASE_WT" "$BASE_TARGET" "$name" "$tn" \
+                            "$REPORT_DIR/base-run.log")
+                        head_verdict=$(run_one_test "$REPO_ROOT" '' "$name" "$tn" \
+                            "$REPORT_DIR/head-run.log")
                         if [ "$base_verdict" = ignored ] || [ "$head_verdict" = ignored ]; then
                             # The test is #[ignore]d, so it needs the install.
                             # Without it there is nothing to run against, and
@@ -1546,10 +1552,12 @@ EOF
                                 continue
                             fi
                             if [ "$base_verdict" = ignored ]; then
-                                base_verdict=$(run_one_test_ignored "$BASE_WT" "$BASE_TARGET" "$name" "$tn")
+                                base_verdict=$(run_one_test_ignored "$BASE_WT" "$BASE_TARGET" "$name" "$tn" \
+                                    "$REPORT_DIR/base-run.log")
                             fi
                             if [ "$head_verdict" = ignored ]; then
-                                head_verdict=$(run_one_test_ignored "$REPO_ROOT" '' "$name" "$tn")
+                                head_verdict=$(run_one_test_ignored "$REPO_ROOT" '' "$name" "$tn" \
+                                    "$REPORT_DIR/head-run.log")
                             fi
                         fi
                         printf '  fail-before  %-52s base %-14s head %s\n' \
@@ -1558,7 +1566,8 @@ EOF
                         if [ "$head_verdict" != passed ]; then
                             printf 'FAIL the test %s of %s does not pass on the head\n' "$tn" "$rel"
                             printf '     the run gave: %s\n' "$head_verdict"
-                            printf '%s\n' "$RUN_OUTPUT" | tail -12
+                            printf '     head run, last lines:\n'
+                            tail -12 "$REPORT_DIR/head-run.log"
                             STEP8_FAIL=1
                             continue
                         fi
