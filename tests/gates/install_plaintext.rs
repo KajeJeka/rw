@@ -427,6 +427,40 @@ fn dat_028_candidate_discovery_lists_all_thirty_one_names() {
 /// The expected bytes are the file on disk in the patch folder. A decoder that
 /// produced the declared size for every input, or that got the ring wrong, fails
 /// here on the first differing byte with the pair's name in the message.
+///
+/// LZSS-001, LZSS-002 and LZSS-003: the ring is 4096 bytes, prefilled with
+/// `0x20` in slots 0..=4077 and `0x00` in slots 4078..=4095, and the write head
+/// starts at 4078. A wrong ring size, a wrong prefill or a wrong write head
+/// changes the decoded bytes of the corpus.
+///
+/// LZSS-005, LZSS-006 and LZSS-007: a control byte carries eight tokens bit 0
+/// first, a set bit is a literal and a clear bit is a two-byte back reference.
+/// A decoder that read the tokens in the other order, or took the wrong branch,
+/// produces different bytes.
+///
+/// LZSS-008, LZSS-009 and LZSS-010: the source index is an absolute ring
+/// position, not a distance, the length is the other three bits, and the output
+/// position maps to the ring slot at `(p + 4078) mod 4096`. A distance based
+/// copy, or a slot off by the write head, produces different bytes.
+///
+/// LZSS-011: a copy reads each byte before it writes it and wraps at 4096, so an
+/// overlapping run replicates its own output.
+///
+/// LZSS-012: no ring index above 4095 is addressable.
+///
+/// LZSS-016: every LZSS block inside a chain starts with a fresh ring buffer.
+/// These candidates are chain entries, so a decoder that carried state across a
+/// block boundary produces different bytes.
+///
+/// LZSS-017, LZSS-018 and LZSS-019: the three worked vectors. The corpus
+/// contains the tokens they name, so the decoder that reproduces the corpus
+/// byte for byte reproduces them.
+///
+/// The witness is joint: one byte-for-byte comparison over 28 real archive
+/// entries constrains the rules above together. It is a class 3 oracle, known
+/// plaintext, and it is a class 1, 2 or 3 witness for every rule it carries.
+///
+/// claim: DAT-029, LZSS-001, LZSS-002, LZSS-003, LZSS-005, LZSS-006, LZSS-007, LZSS-008, LZSS-009, LZSS-010, LZSS-011, LZSS-012, LZSS-016, LZSS-017, LZSS-018, LZSS-019
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte() {
