@@ -2175,7 +2175,10 @@ TARGET_CACHE_DIR="$SOURCE_VIEW/targets"
 mkdir -p "$TARGET_CACHE_DIR"
 
 target_cache_key() {
-    printf '%s|%s' "$1" "$2" | tr -c 'A-Za-z0-9._-' '_'
+    # The commit and the base ref are part of the key: the cache lives in the
+    # report directory and outlives the run, and a list read against another
+    # base is another measurement.
+    printf '%s|%s|%s|%s' "$COMMIT" "$BASE_REF" "$1" "$2" | tr -c 'A-Za-z0-9._-' '_'
 }
 
 read_target_cache() {
