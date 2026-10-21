@@ -11,14 +11,14 @@ written note that explains why, and the owner reviews the note."
 ## What the gate judges
 
 The gate judges each **test**, not each file. The test list of a target comes
-from the test binary itself (`cargo test --test <target> -- --list`), taken at
+from the test binary itself (`cargo test <selector> -- --list`), taken at
 the base and at the head. A test is:
 
 - **added** when the head lists it and the base does not;
 - **changed** when both list it and its own source differs between the two.
 
 Every added or changed test is run against the base implementation, in a
-worktree of the base ref, with the head's test file copied over. A test of
+worktree of the base ref, with the head's test code copied in. A test of
 new behaviour must **fail** there: that is what proves the change. A test
 that already passes on the base cannot prove the change, so it must carry
 **either** a recorded mutation kill **or** an exemption, and both live in this
@@ -29,6 +29,62 @@ A file of a hundred tests is one line in a diff, so a file that changed once
 and passed on the base would have hidden the fact that none of its hundred
 tests was proved. That is why the unit of judgement here is the test.
 
+### Every test target is judged
+
+The gate reads the test targets of the workspace out of the root `Cargo.toml`
+and the crate manifests:
+
+- every `[[test]]` target (the gate test files of the root package, and any
+  integration target a crate declares);
+- the **unit test target** of every crate, which is the tests inside its
+  `src/` tree;
+- every auto-discovered integration target, a file directly under a crate's
+  `tests/` directory.
+
+The 34 tests of `crates/fo1-tests` and `crates/fo1-exe` are tests of a
+target like any other. A test added or changed in one of them is a changed
+test, and the gate judges it. A change that touches no test of any target is
+exempt, which is the guide's own rule ("a pure refactor that changes no test
+is exempt").
+
+### The identity of a test
+
+A test is identified by **the target it belongs to and its own name**. Two
+tests that share a name in two targets are two tests, and a change to either
+of them must be seen. The exemption and the record name the file the test
+lives in, and a file belongs to exactly one target, so the file and the name
+say the same thing.
+
+### The base tree
+
+One worktree of the base ref serves every file, and it is **restored to the
+base ref before every file's run**, so one file's head copy can never reach
+another file's base. What the tree holds for a file's run is:
+
+- the **base** version of every file that carries the implementation under
+  test. The base is the base: the base run must measure the base
+  implementation, or the test proves nothing.
+- the **head** version of the file under judgement, or of its `cfg(test)`
+  region when the same file also carries the implementation. The test is the
+  change under judgement. A file that holds its tests outside a `cfg(test)`
+  region is judged whole, and the step says so, because then the base run
+  measures the head's file.
+- the **head** version of the changed files of the dev-only packages the
+  judged package depends on, which are the harness the test needs to build.
+  A file the test **needs** must not be left at the base, or a compile error
+  in the base would be an artefact of the copy rather than the base's own
+  fault. Everything else stays at the base, because a peer file's head copy
+  is not part of the change under judgement.
+
+The gate prints what the base tree holds for every run, so a reader can see
+which version of each changed file the base run measured.
+
+A base that does not build is **reported** and fails the step: the run
+measured nothing. A compile error that comes from the head's own test code
+is the guide's case ("a compile error counts as a failure"), and it is
+reported as a verdict of its own, with the compiler's first lines, so that it
+is never absorbed silently into "the test failed on the base".
+
 This file is a PROTECTED file: a change to it is noticed by step 1, so the
 owner reviews every record and every exemption.
 
@@ -37,10 +93,11 @@ owner reviews every record and every exemption.
 An exemption says why a test that passes on the base is acceptable anyway.
 One entry per test, in this shape:
 
-    tests/gates/<file>.rs :: <test name> :: <reason>
+    <test file> :: <test name> :: <reason>
 
-- `tests/gates/<file>.rs` — the gate test file, named exactly as it is named
-  in the tree.
+- `<test file>` — the file the test lives in, named exactly as it is named in
+  the tree: a gate test file under `tests/gates/`, or a crate's source file
+  when the test is one of that crate's unit tests.
 - `<test name>` — the name of the test function in that file. The gate checks
   this field: an exemption that names a test the file does not hold is
   rejected, because an exemption that names the wrong test approves nothing.
@@ -50,7 +107,8 @@ One entry per test, in this shape:
   nothing about the change. The owner reads this before accepting it.
 
 The entry is read as the first two `::` separators and the reason is
-everything after the second, so a reason may hold a `::` of its own.
+everything after the second, so a reason may hold a `::` of its own. The
+entry is one line: a reason that runs over two lines is a malformed entry.
 
 Only the "## Entries" section below is read. The prose above it, this format
 example included, is not an entry.
@@ -69,9 +127,11 @@ that mutation and watching the test fail.
 
 One entry per test, in this shape:
 
-    tests/gates/<file>.rs :: <test name> :: <impl file> :: <from line> :: <to line> :: <reason>
+    <test file> :: <test name> :: <impl file> :: <from line> :: <to line> :: <reason>
 
-- `tests/gates/<file>.rs` — the gate test file.
+- `<test file>` — the file the test lives in, named as it is named in the
+  tree: a gate test file under `tests/gates/`, or a crate's source file when
+  the test is one of that crate's unit tests.
 - `<test name>` — the name of the test function that kills the mutation.
 - `<impl file>` — the file the mutation is made in, named as it is named in
   the tree (`crates/fo1-lzss/src/lib.rs`).
