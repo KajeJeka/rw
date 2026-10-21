@@ -82,7 +82,7 @@ One entry per test, in this shape:
   line is kept.
 - `<reason>` — why this test still has teeth, in prose.
 
-The fields are split on the first six `" :: "` separators, with spaces around
+The fields are split on the first five `" :: "` separators, with spaces around
 them, because a Rust line often holds a `::` of its own. A field that holds
 `" :: "` cannot be written down, and the gate says so instead of guessing.
 
