@@ -81,6 +81,8 @@ Rules:
 - `manifest.txt` is the only file directly inside `FO1_REF/holdout/`.
 - `dat/` holds exactly the DAT vectors and `exe/` holds exactly the executable
   table vectors. Nothing else lives in either folder.
+- A file or a directory that these rules do not name is a failure of the test
+  and not something to ignore (HOLD-026).
 - A vector file's name is its **case name**. The case name is the file's stem:
   lower case ASCII letters, digits and `_`, beginning with `dat_` for a DAT
   vector and `exe_` for an executable table vector. The stem is unique across
@@ -116,15 +118,22 @@ over a manifest is to not give the manifest a grammar that can nest.
 
 `UNVERIFIED`
 
-- The file is UTF-8. It carries no byte order mark.
-- Lines end with a single `\n`. There is no `\r`.
-- The last line ends with `\n` too.
-- A line is a sequence of **tokens** separated by exactly one space (`0x20`).
-- There is no tab anywhere in the file. There is no leading space and no
-  trailing space.
-- There are no empty lines and there are no comment lines. A line that begins
-  with `#` is not a comment here; it is a malformed line.
-- Every token is non-empty and contains no space.
+The manifest is UTF-8 with no byte order mark, and every rule below is a rule
+the reader enforces. Each rule names the refusal it produces, so a reader and
+the person who wrote the manifest agree on what a broken file is. All of these
+refusals are `manifest unreadable` refusals, and the detail names the line and
+what is wrong with it.
+
+| Rule | The refusal it produces |
+| --- | --- |
+| the file is UTF-8 and carries no byte order mark | `manifest unreadable`, naming the file and the encoding |
+| every line ends with a single `\n`, and no line carries a `\r` | `manifest unreadable`, naming the line and the carriage return |
+| the last line ends with `\n` too | `manifest unreadable`: the manifest does not end with a newline |
+| a line is a sequence of **tokens** separated by exactly one space (`0x20`) | `manifest unreadable`, naming the line: two spaces in a row, or a leading space, or a trailing space |
+| there is no tab anywhere in the file | `manifest unreadable`, naming the line that carries the tab |
+| there are no empty lines | `manifest unreadable`, naming the line that is empty |
+| there are no comment lines: a line that begins with `#` is a malformed line | the refusal any unknown key gets: a header line that is not the key it must be, or a record whose kind is neither `dat` nor `exe` |
+| every token is non-empty and contains no space | the refusal the token separator produces: the split yields an empty token |
 
 ### HOLD-006 — The header lines, in this order
 
@@ -204,8 +213,8 @@ declared count, with equality. A mismatch is a refusal.
 The counts belong to the owner. The reader never hard-codes a count: the owner
 may add vectors in a later milestone without changing the format, and the count
 in the manifest is what the reader checks against. HOLD-029 and HOLD-031 fix the
-count of the **first milestone's** set, which is a rule about the vectors, not
-about the reader.
+count of the **first milestone's** set — 60 DAT vectors and 12 executable table
+vectors — which is a rule about the vectors, not about the reader.
 
 ### HOLD-010 — The record lines
 
@@ -227,6 +236,11 @@ holding before it can parse the line is a reader with two parsers.
 - `file` is the vector file's path **relative to the folder that holds the
   manifest**, with `/` as the separator on every platform. It is
   `dat/<name>.hex` or `exe/<name>.bin`.
+- The field is **written** with `/` on every platform, whatever separator the
+  platform uses for paths of its own. A reader splits the field on `/` and
+  joins the two halves with the platform's own separator, so the two folders
+  on disk are `dat` and `exe` everywhere and the manifest looks the same on
+  every machine.
 - `file_bytes` is the exact byte length of that file on disk.
 - `file_sha256` is the SHA-256 of that file's bytes **exactly as stored on
   disk**.
@@ -247,6 +261,28 @@ either folder is a failure complete the binding (HOLD-026).
   no sign, no `0x` prefix, no thousands separator, no underscore.
 - An integer has **no leading zero**, except that the value zero is written as
   the single character `0`. `0` is legal; `00` and `007` are not.
+- The width of every integer field is fixed:
+
+| Field | Width |
+| --- | --- |
+| `format_version`, `dat_count`, `exe_count` | unsigned 64 bit |
+| `file_bytes`, `decoded_size` | unsigned 64 bit |
+| `file_offset`, `length` | unsigned 64 bit |
+| `va` | unsigned 32 bit |
+
+  `va` is 32 bit because that is the width the reader is addressed with:
+  `PeImage::read_va` takes a `va: u32`. The other fields are 64 bit because
+  they count bytes, and the format does not say they are small.
+- A number that does not fit the width of its field is a refusal, never a
+  truncation and never a wrap: a number that does not fit 64 bits is
+  `manifest unreadable`, naming the line; a `va` that does not fit 32 bits is
+  `manifest unreadable`, naming the line and the address.
+- A **range** that would not fit is refused as well, and never computed with
+  an overflow: the sum `file_offset + length` of an executable table record is
+  computed in checked arithmetic, and a sum that would overflow is refused
+  like a window that runs past the end of the executable
+  (`vector offset outside the executable`, HOLD-023 step 2). A `length` that
+  does not fit the machine's own `usize` is refused the same way.
 - A digest field is exactly **64 lower case hex characters**: `0` to `9` and
   `a` to `f`. An upper case digest is a refusal, not a case folded comparison.
   The repository's own digest helpers already emit lower case hex, so the
@@ -273,9 +309,15 @@ causes the test to skip:
 | a header key appears after the first record | the header is a prefix |
 | a record line does not have exactly seven tokens | the shape is fixed |
 | a record kind is neither `dat` nor `exe` | the reader must not skip a record it does not understand |
+| a `dat` record follows an `exe` record | the `dat` records come first and the `exe` records follow them (HOLD-010) |
 | an integer field is not a canonical decimal integer | HOLD-011 |
+| an integer field does not fit the width of its field | HOLD-011 |
 | a digest field is not 64 lower case hex characters | HOLD-011 |
 | a `file` field is absolute, or contains `..`, or contains `\` | the manifest names files inside the folder and nowhere else |
+| the manifest does not end with a newline | HOLD-005 |
+| a line is empty | HOLD-005 |
+| a line carries a carriage return or a tab | HOLD-005 |
+| a line holds two spaces in a row, or a leading space, or a trailing space | HOLD-005 |
 | the number of records of a kind differs from the declared count | HOLD-009 |
 
 The reader reads the manifest **once**, into memory, before it runs a single
@@ -363,10 +405,21 @@ them would be the one a reader used by mistake.
 `path` is the **composed** path of the entry, in the form the reader looks up:
 
 - It is non-empty.
-- Its characters are upper case ASCII letters, digits, `.`, `_` and `-`.
-- Its segments are separated by a single `\` (`0x5C`).
-- It has no leading `\`, no trailing `\` and no empty segment.
+- Its characters are upper case ASCII letters, digits, `.`, `_`, `-` and the
+  separator `\` (`0x5C`).
+- The character rule is about the characters of the **names**, not about the
+  whole path: the `\` that joins two names is the separator and not one of the
+  characters a name may hold. Every family this section lists is therefore
+  legal, including the ones whose path carries a directory prefix.
+- Its segments are separated by a single `\`, and it has no leading `\`, no
+  trailing `\` and no empty segment.
 - It contains no space, so it is one token.
+
+The path is written unambiguously because the reader never parses it. It
+composes the path of every entry in the archive under DAT-011 and compares the
+string with the manifest's path as an exact match (HOLD-018 step 4). A
+directory name may itself hold a `\` (family C15, DAT-003), so a path cannot be
+split back into the names it was made of, and no reader may try to split it.
 
 The path is already upper case, because the repository's rule is that the
 caller uppercases and the reader folds nothing (DAT-031, DAT-032).
@@ -525,6 +578,12 @@ bounded by the raw extent of the section that owns the virtual address, not
 only by the end of the file (EXETBL-002). Every window in this set lies inside
 one section's raw extent, so a correct reader answers every one of them.
 
+That is also what this set cannot do, and it is said here rather than left to
+be discovered: every window lies **strictly** inside its section's raw extent,
+so this set cannot tell a reader that bounds a read by the end of the file
+alone from one that bounds it by the section. The difference is graded by the
+repository's own install test, not by the hold-out set.
+
 ### HOLD-023 — What the reader does with an executable table vector
 
 `UNVERIFIED`
@@ -533,8 +592,10 @@ For each `exe` record, in this order, and every step is an assertion:
 
 1. The vector file exists, its byte length on disk is `file_bytes` and is
    equal to `length`, and the SHA-256 of its bytes is `file_sha256`.
-2. `length >= 1` and `file_offset + length` does not pass the end of the
-   executable.
+2. `length >= 1`, `file_offset + length` is computed in checked arithmetic and
+   does not overflow, and the sum does not pass the end of the executable. A
+   sum that would overflow is refused like a window that runs past the end:
+   `vector offset outside the executable`.
 3. The reader, asked for `length` bytes at `va`, returns exactly the vector
    file's bytes.
 4. The reader's own section table maps `va` to `file_offset`: the section that
@@ -593,6 +654,18 @@ default `cargo test` run stays fast and the full gate runs them with
 the fixture that is missing, because the repository's banned pattern rule
 requires it.
 
+The gate's count file names this file with the key `install_holdout` and the
+value `2`. The count check reads the number of `#[test]` functions the file
+holds and compares it with that floor: a file that measures **below** the
+floor fails, and a file that measures zero fails outright, so the row is not
+optional for a gate file. The value may only rise, and only with the owner's
+approval.
+
+The number of **cases** the file runs is not in that file and is not a floor:
+it belongs to the manifest and rises whenever the owner adds a vector
+(HOLD-009). That is why the floor counts the two test functions and not the
+cases.
+
 The two are separate because the DAT vectors need nothing but the folder: a
 machine with the folder but no install must still be able to run them, and a
 missing install must not hide a DAT failure behind an install failure.
@@ -603,8 +676,13 @@ table value is ever committed to this repository.
 
 The hold-out folder is reached through the `fo1-tests` harness, because the
 banned pattern rule forbids a direct read of `FO1_REF` outside the harness and
-forbids any read of `FO1_REF` in production code. The harness function that
-resolves the folder is the test author's to name.
+forbids any read of `FO1_REF` in production code.
+
+The harness holds the one reading of the folder: `fo1_tests::holdout_root`
+resolves `FO1_REF/holdout/` and `fo1_tests::holdout_manifest_path` resolves
+`FO1_REF/holdout/manifest.txt`, and the test reads the folder through those
+two paths. No other crate reads the folder, and no other reading of it exists
+(HOLD-028).
 
 ### HOLD-026 — Nothing is ever skipped, and every failure is loud
 
@@ -623,14 +701,27 @@ of the test, with a message that names the condition:
 | the manifest's record count disagrees with its counts | fails, naming the count found and the count declared |
 | a vector file is missing | fails, naming the case |
 | a vector file's size or digest disagrees with the manifest | fails, naming the case |
+| a vector file's bytes are not what its kind says they are | fails, naming the case |
 | a file in `dat/` or `exe/` is not declared in the manifest | fails, naming the file |
+| a file directly inside `FO1_REF/holdout/` other than `manifest.txt` | fails, naming the file |
+| a directory inside `FO1_REF/holdout/` other than `dat` and `exe` | fails, naming the directory |
+| a directory inside `dat/` or `exe/` | fails, naming the directory |
 | a vector does not parse, does not decode, or produces the wrong bytes | fails, naming the case |
+| the reference install is missing or unreachable | fails, naming the install, and only the executable table part fails: the DAT part needs no install (HOLD-025) |
 | the executable is not the reference build | fails, naming the build mismatch |
 
-The last row of the table is the one that separates this from a normal gate
-test: a file in `dat/` or `exe/` that the manifest does not declare is a
-failure, not something to ignore. It is what makes the manifest a statement
-about the whole set and not a list of some of it.
+The rows about an unexpected file or an unexpected directory are the ones that
+separate this from a normal gate test: a file in `dat/` or `exe/` that the
+manifest does not declare is a failure, not something to ignore, and so is a
+file or a directory the folder holds that the layout of HOLD-003 does not
+name. It is what makes the manifest a statement about the whole set and not a
+list of some of it: the set is exactly what the manifest describes, and a file
+that nobody declared is a defect in the set and not a file to skip.
+
+The row about the install is the one the executable part can actually hit on a
+machine that has the folder and no install. It fails the executable table part
+whole, and it does not hide a DAT failure behind it: the DAT part needs
+nothing but the folder, and it runs and reports on its own.
 
 The banned pattern rule applies to this file exactly as it applies to the rest
 of the gate tests: no `continue` inside a loop over cases, no early `return`
@@ -662,16 +753,39 @@ A failing case prints one line before the summary, in this form:
 holdout <kind>: FAILED <case-name>: <reason>
 ```
 
-`<kind>` is `dat` or `exe`, `<case-name>` is the vector file's stem, and
+A failure that belongs to the **whole part** rather than to one case prints one
+line before the summary too, in this form:
+
+```
+holdout <kind>: FAILED <scope>: <reason>
+```
+
+`<kind>` is `dat` or `exe`. `<case-name>` is the vector file's stem.
+`<scope>` is one of four fixed names, and it is never a vector's stem:
+
+| Scope | The failure it names |
+| --- | --- |
+| `manifest` | the manifest cannot be read, cannot be parsed, or carries a version the reader does not know |
+| `set` | the hold-out folder cannot be located, or the folder holds a file the manifest does not declare |
+| `install` | the reference install is missing or unreachable |
+| `executable` | the executable at run time is not the reference build |
+
+A whole-part failure happens before any case runs, so the summary line of that
+part is `holdout <kind>: 0 cases, 0 passed` — the same form as every other
+summary line, and printed in both cases.
+
 `<reason>` is one of a fixed vocabulary:
 
 ```
 manifest unreadable
 manifest version not understood
 manifest count mismatch
+references directory not set
+undeclared file in the vector folder
 vector file missing
 vector file size mismatch
 vector file digest mismatch
+vector file malformed
 archive parse failed
 entry not found
 decode failed
@@ -682,6 +796,19 @@ reader mapping disagrees with the vector offset
 executable is not the reference build
 vector offset outside the executable
 ```
+
+Three of these name a failure that HOLD-026 states in words, and each one
+names exactly one failure:
+
+| Reason | The failure it names |
+| --- | --- |
+| `references directory not set` | `FO1_REF` is not set, so the hold-out folder cannot be located. The scope is `set`. |
+| `undeclared file in the vector folder` | a file in `dat/` or `exe/` that the manifest does not declare. The scope is `set`. |
+| `vector file malformed` | a vector file whose bytes are not what its kind says they are: a `.hex` file that does not end in one newline, that holds an odd number of hex characters, that holds a character that is not a hex character, or that is empty. The scope is the case. |
+
+`archive parse failed` is the neighbouring reason and names the other half of
+the same pair: the file's bytes are well formed hex, and the **archive** they
+decode to does not parse as a DAT archive.
 
 The vocabulary is fixed so that the reason can be read by a machine and so
 that no reason can carry data. A failing line **must not** print the expected
@@ -697,10 +824,12 @@ case failed.
 
 `UNVERIFIED`
 
-No crate in this workspace may read `FO1_REF` or the hold-out folder. The
-guide's banned pattern rule already forbids both: a read of `FO1_REF` in
-production code, and a read of `FO1_DATA` or `FO1_REF` outside the
-`fo1-tests` harness.
+Only one crate in this workspace may read `FO1_REF` or the hold-out folder:
+**`crates/fo1-tests`**, because that is the harness the gate test reads the
+folder through (HOLD-025). Every other crate may not, and no crate of
+production code may read `FO1_REF` at all. The guide's banned pattern rule
+already settles it: a read of `FO1_REF` in production code is forbidden, and a
+read of `FO1_DATA` or `FO1_REF` outside the `fo1-tests` harness is forbidden.
 
 This is what makes the set a hold-out. The implementer never sees a vector, so
 it cannot special case one, and it cannot fit its code to the set, because it
@@ -711,57 +840,77 @@ vectors* row).
 
 ## 6. The rules the vectors obey
 
-### HOLD-029 — The DAT vectors: 32 of them, in 32 families
+### HOLD-029 — The DAT vectors: 60 of them, covering 32 families
 
 `UNVERIFIED`
 
-The first milestone's set holds **32 DAT vectors**, one per family below. The
-family fixes the shape of the archive; the payload bytes come from the seed.
+The first milestone's set holds **60 DAT vectors**. The **32 families** below
+fix the shape of an archive; the payload bytes come from the seed.
 
-| # | Family | Mode | Where the entry sits |
-| --- | --- | --- | --- |
-| S1 | one stored byte | `0x20` | the `.` root directory |
-| S2 | a stored payload whose length is not a multiple of four | `0x20` | a named directory |
-| S3 | a stored payload as long as one ring (LZSS-001) | `0x20` | a named directory |
-| S4 | a stored payload as long as the largest raw block payload the corpus holds (DAT-027) | `0x20` | a named directory |
-| S5 | a stored payload as long as a palette entry (DAT-029) | `0x20` | a named directory |
-| S6 | a stored payload holding every byte value from `0x00` to `0xFF` | `0x20` | a named directory |
-| L1 | an LZSS stream of literals only | `0x10` | the `.` root directory |
-| L2 | an LZSS stream with a back reference whose distance is at least its length | `0x10` | a named directory |
-| L3 | an LZSS stream with a back reference whose distance is smaller than its length | `0x10` | a named directory |
-| L4 | an LZSS stream that ends exactly on a control byte boundary | `0x10` | a named directory |
-| L5 | an LZSS stream that ends in the middle of a control byte | `0x10` | a named directory |
-| L6 | an LZSS stream with a back reference that reads the prefilled `0x20` region | `0x10` | a named directory |
-| L7 | an LZSS stream with a back reference that reads the prefilled `0x00` region | `0x10` | a named directory |
-| L8 | an LZSS stream with a back reference whose source index is the highest addressable ring slot | `0x10` | a named directory |
-| L9 | an LZSS stream whose output is longer than one ring, so the write head wraps | `0x10` | a named directory |
-| L10 | an LZSS stream that repeats the longest run the token can encode | `0x10` | a named directory |
-| C1 | a chain of one raw block | `0x40` | a named directory |
-| C2 | a chain of one LZSS block | `0x40` | a named directory |
-| C3 | a chain of a raw block then an LZSS block | `0x40` | a named directory |
-| C4 | a chain of an LZSS block then a raw block | `0x40` | a named directory |
-| C5 | a chain of three blocks: raw, LZSS, raw | `0x40` | a named directory |
-| C6 | a chain whose last LZSS block ends in the middle of a control byte | `0x40` | a named directory |
-| C7 | a chain whose last LZSS block ends exactly on a control byte boundary | `0x40` | a named directory |
-| C8 | a chain with a raw block whose payload is one byte | `0x40` | a named directory |
-| C9 | a chain with a raw block whose payload is the format's block ceiling | `0x40` | a named directory |
-| C10 | a chain with an LZSS block whose payload is the format's block ceiling | `0x40` | a named directory |
-| C11 | a chain of eight blocks | `0x40` | a named directory |
-| C12 | a chain with an LZSS block that carries no match token | `0x40` | a named directory |
-| C13 | a chain of two LZSS blocks whose outputs differ if one ring is shared across the chain | `0x40` | a named directory |
-| C14 | a chain whose entry name is the longest name the corpus holds | `0x40` | a named directory |
-| C15 | a chain whose directory name itself holds a `\` | `0x40` | a directory name with a `\` in it |
-| C16 | a chain in the `.` root directory, so the composed path carries no prefix | `0x40` | the `.` root directory |
+The coverage rule is this: **every family below is covered by at least one
+vector, and a family may be covered by more than one vector.** The 60 vectors
+cover all 32 families, and 28 of them are second instances of a family — the
+same shape with a different payload, a different path or a different size. One
+vector per family is not the rule, and it could not be: it would make 32
+vectors, and the set holds 60.
 
-Six stored, ten LZSS streams, sixteen chains: `6 + 10 + 16 = 32`.
+| # | Family | Mode | Where the entry sits | The rule it exercises |
+| --- | --- | --- | --- | --- |
+| S1 | one stored byte | `0x20` | the `.` root directory | DAT-015 |
+| S2 | a stored payload whose length is not a multiple of four | `0x20` | a named directory | DAT-015 |
+| S3 | a stored payload as long as one ring | `0x20` | a named directory | LZSS-001 |
+| S4 | a stored payload as long as the largest raw block payload the corpus holds | `0x20` | a named directory | DAT-027 |
+| S5 | a stored payload as long as a palette entry | `0x20` | a named directory | DAT-029 |
+| S6 | a stored payload holding every byte value from `0x00` to `0xFF` | `0x20` | a named directory | DAT-015 |
+| L1 | an LZSS stream of literals only | `0x10` | the `.` root directory | LZSS-005, LZSS-006 |
+| L2 | an LZSS stream with a back reference whose distance is at least its length | `0x10` | a named directory | LZSS-008, LZSS-009 |
+| L3 | an LZSS stream with a back reference whose distance is smaller than its length | `0x10` | a named directory | LZSS-011 |
+| L4 | an LZSS stream that ends exactly on a control byte boundary | `0x10` | a named directory | LZSS-005, LZSS-013 |
+| L5 | an LZSS stream that ends in the middle of a control byte | `0x10` | a named directory | LZSS-013 |
+| L6 | an LZSS stream with a back reference that reads the prefilled `0x20` region | `0x10` | a named directory | LZSS-002, LZSS-003 |
+| L7 | an LZSS stream with a back reference that reads the prefilled `0x00` region | `0x10` | a named directory | LZSS-002 |
+| L8 | an LZSS stream with a back reference whose source index is the highest addressable ring slot | `0x10` | a named directory | LZSS-012 |
+| L9 | an LZSS stream whose output is longer than one ring, so the write head wraps | `0x10` | a named directory | LZSS-010, LZSS-011 |
+| L10 | an LZSS stream that repeats the longest run the token can encode | `0x10` | a named directory | LZSS-008 |
+| C1 | a chain of one raw block | `0x40` | a named directory | DAT-018 |
+| C2 | a chain of one LZSS block | `0x40` | a named directory | DAT-018, LZSS-016 |
+| C3 | a chain of a raw block then an LZSS block | `0x40` | a named directory | DAT-020 |
+| C4 | a chain of an LZSS block then a raw block | `0x40` | a named directory | DAT-020 |
+| C5 | a chain of three blocks: raw, LZSS, raw | `0x40` | a named directory | DAT-020 |
+| C6 | a chain whose last LZSS block ends in the middle of a control byte | `0x40` | a named directory | LZSS-013, LZSS-022 |
+| C7 | a chain whose last LZSS block ends exactly on a control byte boundary | `0x40` | a named directory | LZSS-005, LZSS-013 |
+| C8 | a chain with a raw block whose payload is one byte | `0x40` | a named directory | DAT-018 |
+| C9 | a chain with a raw block whose payload is the format's block ceiling | `0x40` | a named directory | DAT-027 |
+| C10 | a chain with an LZSS block whose payload is the format's block ceiling | `0x40` | a named directory | DAT-027 |
+| C11 | a chain of eight blocks | `0x40` | a named directory | DAT-018 |
+| C12 | a chain with an LZSS block that carries no match token | `0x40` | a named directory | LZSS-005, LZSS-006 |
+| C13 | a chain of two LZSS blocks whose outputs differ if one ring is shared across the chain | `0x40` | a named directory | LZSS-016 |
+| C14 | a chain whose entry name is 12 bytes long, the longest entry name the corpus holds (DAT-009), and names nothing in the install | `0x40` | a named directory | DAT-009 |
+| C15 | a chain whose directory name itself holds a `\` (DAT-003) | `0x40` | a directory name with a `\` in it | DAT-003, DAT-011 |
+| C16 | a chain in the `.` root directory, so the composed path carries no prefix | `0x40` | the `.` root directory | DAT-011 |
 
-Every family names a rule that a real archive exercises and that a decoder can
-get wrong in a way a length check does not catch. The rules these families are
-drawn from are the ones the container and codec specs state: the mode
-selection, the fresh ring per block, the mid control byte stop, the
-self-replicating run, the two prefilled regions of the ring, the highest
-addressable ring slot, the block payload ceiling, and the path composition
-rule that keys on the `.` directory name.
+Six stored, ten LZSS streams, sixteen chains: `6 + 10 + 16 = 32` families, and
+the 60 vectors cover all of them.
+
+Every rule in the last column of the stored and the chain families is
+`CONFIRMED AGAINST ORIGINAL BINARY`, and the corpus exercises it: 4,787 stored
+entries and 20,456 chain entries (DAT-026), with the closure over the chain
+entries measured (LZSS-022).
+
+The ten LZSS families are the ones that need the truth told carefully, because
+two different rules are in play. What each of them exercises is a **codec**
+rule, and every codec rule in the last column is `CONFIRMED AGAINST ORIGINAL
+BINARY` and is exercised by the corpus: the corpus holds LZSS blocks inside
+its chain entries, and the closure over them is measured (LZSS-022). What the
+corpus does **not** exercise is the **entry mode** those families carry their
+stream in. A mode `0x10` entry is one LZSS stream whose input length is the
+compressed size (DAT-014), that rule is `UNVERIFIED`, and 0 of the 25,243
+entries select the mode (DAT-026).
+
+A family is therefore worth a vector twice over, and the second reason is the
+one the corpus cannot give: it grades the codec under the mode the guide
+states, and it grades the mode rule that no corpus entry can reach. The rule
+the corpus cannot check is exactly the one a hold-out set exists for.
 
 The rules that govern each archive are the ones `docs/spec/dat.md` and
 `docs/spec/lzss.md` state. This file does not restate their numbers.
@@ -777,62 +926,97 @@ Whichever family a vector belongs to:
    names, one block header per directory, and the entry records.
 2. It holds **exactly one directory and exactly one entry**, so the path in the
    manifest names one thing and the lookup cannot be ambiguous.
-3. The directory name is either the single character `.` or an upper case name
-   no longer than the longest directory name the corpus holds (DAT-003). A
-   directory name may hold a `\` (family C15), because one of the real archives
-   has such a name.
-4. The entry name is upper case, no longer than the longest entry name the
-   corpus holds (DAT-009), and holds no `\`.
+3. The directory name is either the single character `.` or a synthetic upper
+   case name. A directory name may hold a `\` (family C15), because one of the
+   real archives has such a name (DAT-003). The name itself must name nothing
+   in the install, so the family keeps the **shape** and not the name: the
+   corpus's own directory name is used in no vector. A directory name is one
+   length-prefixed name, so it holds at most 255 bytes (DAT-003).
+4. The entry name is upper case, holds no `\`, and is no longer than the
+   longest entry name the corpus holds: 12 bytes (DAT-009). The name itself is
+   synthetic: it is a name of that length that names nothing in the install
+   (family C14).
 5. The composed path is the directory name and the entry name joined by one
    `\`, except that the `.` directory contributes no separator. The path in the
    manifest is that composed path.
 6. The entry's payload mode is the high nibble of its flags, and the flags
    high nibble is the mode the family names.
 7. A stored entry declares a compressed size of zero; a chain entry declares a
-   compressed size that is not zero.
+   compressed size that is not zero (DAT-017). A mode `0x10` entry declares a
+   compressed size that is not zero either, because its input length *is* its
+   compressed size (DAT-014). The compressed size therefore does not tell a
+   reader the mode: the mode is the high nibble of the flags (DAT-013), and a
+   reader must never read a nonzero compressed size as "chain".
 8. The entry's offset is absolute in the archive and points at real bytes
    inside it. The stored region is bounded by the compressed size for a chain
    entry and by the uncompressed size for a stored entry.
 9. A chain's block headers account for the compressed size exactly, and the
    decoded output is exactly the uncompressed size.
-10. The archive is small: it holds one entry and its payload, so a vector file
-    stays in the kilobytes.
+10. The archive holds one entry, its payload and the framing around them, and
+    nothing else. The size of the file follows the family: most of the
+    families produce a file of a few hundred bytes, and the four families that
+    fix a payload of the corpus's own size — S4, C9 and C10 (DAT-027) and S5
+    (DAT-029) — produce files of tens of kilobytes. The size is the payload's,
+    and the payload is what the family fixes.
 
 Rules 6 to 9 are exactly the invariants the container spec calls cheap and
 exhaustive to assert. A vector that broke one of them would be a broken
 fixture, and the owner would find it when the set was generated, because the
 generator asserts them.
 
-### HOLD-031 — The executable table vectors: 16 of them, in 16 families
+### HOLD-031 — The executable table vectors: 12 of them, covering 16 families
 
 `UNVERIFIED`
 
-The first milestone's set holds **16 executable table vectors**. Each names a
+The first milestone's set holds **12 executable table vectors**. Each names a
 region of the reference executable and the bytes the reader must produce for
 it.
 
+The coverage rule is the one HOLD-029 uses: **every family below is covered by
+at least one vector, and a vector may cover more than one family** when its
+window spans more than one family's region. The 12 vectors cover all 16
+families, because the crossing window holds the hit location penalty table
+and the critter table's first record, the stat limits window holds the whole
+XP thresholds table, and the player stat limits window holds its own whole
+table. One vector per family is not the rule, and it could not be: it would
+make 16 vectors, and the set holds 12.
+
 | # | Family | The region |
 | --- | --- | --- |
-| X1 | the whole hit location penalty table | the table's own extent |
-| X2 | the first record of the critter critical table | one record |
-| X3 | the last record of the critter critical table | one record |
-| X4 | the first record of the player critical table | one record |
-| X5 | the last record of the player critical table | one record |
-| X6 | the whole critical failure table | the table's own extent |
-| X7 | the first record of the stat limits table | one record |
-| X8 | the last record of the stat limits table | one record |
-| X9 | the whole player stat limits table | the table's own extent |
+| X1 | the whole Hit location penalty table | the table's own extent |
+| X2 | the first record of the Critical success, critters table | one record |
+| X3 | the last record of the Critical success, critters table | one record |
+| X4 | the first record of the Critical success, player table | one record |
+| X5 | the last record of the Critical success, player table | one record |
+| X6 | the whole Critical failure table | the table's own extent |
+| X7 | the first record of the Stat limits table | one record |
+| X8 | the last record of the Stat limits table | one record |
+| X9 | the whole Player stat limits table | the table's own extent |
 | X10 | the whole XP thresholds table | the table's own extent |
-| X11 | a window that crosses the boundary between the hit location penalty table and the critter critical table | two tables in one window |
-| X12 | a 4096-byte window starting at the first byte of the critter critical table | a long window |
-| X13 | a 4096-byte window ending exactly at the last byte of the critter critical table | a long window |
-| X14 | a 4096-byte window starting at the first byte of the stat limits table | a long window |
+| X11 | a window that crosses the boundary between the Hit location penalty table and the Critical success, critters table | two tables in one window |
+| X12 | a 4096-byte window starting at the first byte of the Critical success, critters table | a long window |
+| X13 | a 4096-byte window ending exactly at the last byte of the Critical success, critters table | a long window |
+| X14 | a 4096-byte window starting at the first byte of the Stat limits table | a long window |
 | X15 | a 4096-byte window ending exactly at the last byte of the XP thresholds table | a long window |
-| X16 | a 4096-byte window starting at the first byte of the player stat limits table | a long window |
+| X16 | a 4096-byte window starting at the first byte of the Player stat limits table | a long window |
 
-The table names are the ones `docs/spec/exe-tables.md` uses. The offsets and
-the extents come from that file's table of file offsets and from the mapping
-rule in EXETBL-002, and are not repeated here.
+The table names are the ones `docs/spec/exe-tables.md` uses, word for word:
+Hit location penalty (EXETBL-003), Critical success, critters (EXETBL-004),
+Critical success, player (EXETBL-005), Critical failure (EXETBL-006), Stat
+limits (EXETBL-007), Player stat limits (EXETBL-008) and XP thresholds
+(EXETBL-009). The offsets and the extents come from that file's table of file
+offsets and from the mapping rule in EXETBL-002, and are not repeated here.
+
+The X11 window is bounded on both sides, so that it really is a crossing
+window: it starts at or before the first byte of the Hit location penalty
+table and ends at or after the last byte of the Critical success, critters
+table's first record. The two tables are adjacent, so a window that crosses
+the boundary and still holds the whole penalty table starts before that
+table's first byte.
+
+The table a window belongs to is carried by the **case name**, which is the
+vector file's stem: the `exe` record has no field for the table's name, and a
+reader must not expect one.
 
 ### HOLD-032 — The executable table vectors: the rules every one of them obeys
 
@@ -885,13 +1069,13 @@ working.
   independent reference implementation) and the executable table cases are
   class 1 (bytes of the original executable). `docs/spec/trace.md` is where a
   claim is mapped to a test and a class, and this file adds no row to it.
-- **How the hold-out file joins the gate's fixed case counts.** The gate
-  compares the counts a run produced with `expected_counts.toml`, and that file
-  holds floors per gate file. The hold-out file's own count of tests is fixed,
-  but its count of **cases** belongs to the manifest and rises whenever the
-  owner adds a vector, so it cannot be a floor in that file. The test author
-  and the owner settle this when the hold-out file is written; this file names
-  the problem and does not settle it.
+- **The number of cases the hold-out file runs.** The gate compares the counts
+  a run produced with `expected_counts.toml`, and that file holds one floor per
+  gate file. The hold-out file's own row is settled: the key is
+  `install_holdout` and the value is `2`, the number of test functions the
+  file holds (HOLD-025). The count of **cases** belongs to the manifest and
+  rises whenever the owner adds a vector, so it is not a floor and it is not
+  in that file.
 - **Whether the owner wants the executable table vectors to grade the table
   accessors rather than raw byte windows.** A window grades the reader's
   mapping and its bounds; an accessor grade would also grade the record
@@ -910,24 +1094,21 @@ working.
 
 ## 8. Open questions
 
-1. Does the hold-out gate file get its own row in `expected_counts.toml`, and
-   if so, is the floor the number of test functions rather than the number of
-   cases?
-2. Should the two parts be one test function, so that the implementer sees a
+1. Should the two parts be one test function, so that the implementer sees a
    single case count? The split exists so that a missing install cannot hide a
    DAT failure, and it costs one extra test function.
-3. Should the DAT vector's hex file be allowed to hold the archive as raw
+2. Should the DAT vector's hex file be allowed to hold the archive as raw
    bytes instead? Hex was chosen for auditability; raw bytes would halve the
    size and make the file unreadable by eye.
-4. Should the executable table vectors also carry the table's **name**, so a
+3. Should the executable table vectors also carry the table's **name**, so a
    failing case says which table it was rather than only which file? The file
    stem already carries a name, but a separate field would let a reader group
    failures without a naming convention.
-5. Should the seed be required to be a specific length, or should any
+4. Should the seed be required to be a specific length, or should any
    non-empty token be allowed so that a different generator's seed can be
    recorded? This file requires 64 hex characters, which is 32 bytes, which is
    what a normal generator draws.
-6. Should a later milestone's set be a **new** manifest in the same folder, or
+5. Should a later milestone's set be a **new** manifest in the same folder, or
    a new version of the same manifest? The manifest is versioned by number and
    the folder holds exactly one manifest, so a new set means a new folder. The
    guide says the owner keeps vectors "for each milestone", which reads as one
