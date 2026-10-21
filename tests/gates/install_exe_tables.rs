@@ -474,6 +474,13 @@ const STAT_LIMIT_FIELD0: i32 = 0;
 /// Field 1 in all 38 stat limit records (EXETBL-C924).
 const STAT_LIMIT_FIELD1: i32 = 0;
 
+/// Field 2 in all five player stat limit records (EXETBL-008). Read from the
+/// reference executable at file offset `0xE9058`, where each record's field 2
+/// is the four bytes at its own offset 8. It is zero in all five, so it cannot
+/// be a per record index there: one reading cannot name the level, the
+/// experience, the reputation and the karma at once.
+const PLAYER_STAT_LIMIT_FIELD2: i32 = 0;
+
 /// Minimum of the first seven records, the seven core attributes (EXETBL-C922
 /// and C705).
 const STAT_LIMIT_CORE_MINIMUM: i32 = 1;
@@ -2025,8 +2032,8 @@ fn install_player_stat_limits_are_five_records_with_the_documented_ranges() {
         "EXETBL-008: and so is karma, which is the last of the five records"
     );
 
-    // Fields 0 and 1 are zero in all five records, exactly as in the stat limits
-    // table above them.
+    // Fields 0, 1 and 2 are zero in all five records, exactly as fields 0 and 1
+    // are in the stat limits table above them.
     let mut zero_fields = 0usize;
     for record in player.iter() {
         assert_eq!(
@@ -2038,6 +2045,12 @@ fn install_player_stat_limits_are_five_records_with_the_documented_ranges() {
             record.field1(),
             STAT_LIMIT_FIELD1,
             "EXETBL-008: and so is field 1"
+        );
+        assert_eq!(
+            record.field2(),
+            PLAYER_STAT_LIMIT_FIELD2,
+            "EXETBL-008: and field 2 is zero in all five player records, so it \
+             cannot be a per record index there"
         );
         zero_fields += 1;
     }
