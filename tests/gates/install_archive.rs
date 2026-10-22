@@ -1294,6 +1294,8 @@ fn dat_020_chain_stats_totals_equal_the_framing_census() {
 /// top of the addressable ring and never asks past it, so the bound is measured
 /// and not merely theoretical.
 ///
+/// oracle: class 2 (closure on real data: every entry of both archives decodes
+/// to its declared uncompressed size)
 /// claim: DAT-023, DAT-024, LZSS-014, DAT-009, DAT-015, DAT-019, DAT-030, LZSS-013, LZSS-020, LZSS-022, LZSS-023
 #[test]
 #[ignore = "needs FO1_DATA"]
@@ -1490,6 +1492,8 @@ fn dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen() {
 /// names; CRITTER.DAT's only block is named `ART\CRITTERS` and all 5,459 of its
 /// entries keep the prefix. A rule keyed on block index would strip the prefix
 /// from every CRITTER path, which is the disproof DAT-011 records.
+///
+/// oracle: class 2 (closure on real data: the composed paths of both archives)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_011_path_composition_keys_on_the_directory_name() {
@@ -1566,6 +1570,7 @@ fn dat_011_path_composition_keys_on_the_directory_name() {
 /// prefixed, in file order. The lookup walks that name list to reach the entry
 /// it returns.
 ///
+/// oracle: class 2 (closure on real data: the measured lookups of both archives)
 /// claim: DAT-029, DAT-012, DAT-010, DAT-003
 #[test]
 #[ignore = "needs FO1_DATA"]
@@ -1867,6 +1872,9 @@ fn the_install_fingerprint_is_exact() {
 /// It is not game data and it is not committed; it exists so that a harness
 /// which stopped checking would fail here (guide: Fixtures and golden files,
 /// "unsupported install").
+///
+/// oracle: class 2 (closure on real data: the reference install's own
+/// executable digest is what the scratch install fails to match)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn the_harness_rejects_a_foreign_install() {
