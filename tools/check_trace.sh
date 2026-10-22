@@ -13,6 +13,11 @@
 #   - a whole line evidence tag no claim claims      -> fail
 #   - the map is empty                                 -> fail
 #
+# The first two rules are per TEST, not per file. A file is only a container:
+# one test that names a claim and declares a class says nothing about the test
+# beside it, and a test that a map row names is no exception, because the row
+# names the test and does not say what the test proves.
+#
 # Exit status: 0 complete, 1 traceability incomplete.
 
 set -euo pipefail
@@ -123,40 +128,20 @@ $1
     esac
 }
 
-# --- rule 1: every gate test names at least one claim -------------------------
+# --- rule 1: every gate test names a claim and declares an oracle class -------
+#
+# The rule is per TEST and it is checked after the inventory is read, because
+# the inventory is what says what each test carries. It was per FILE once, and
+# a file is only a container: one test that named a claim and declared a class
+# said nothing about the test beside it, so a test could sit in the map without
+# ever saying what it proves. A map row naming the test does not excuse it,
+# because the row names the test and does not say what the test proves.
+#
+# The check itself is down here, with the inventory it reads.
 
 if [ "$GATE_COUNT" -eq 0 ]; then
     problem "no gate tests exist, so no claim has a test and traceability is empty"
 fi
-
-while IFS= read -r test_file; do
-    [ -n "$test_file" ] || continue
-    [ -f "$test_file" ] || continue
-    cited=$(grep -oE "$CLAIM_RE" "$test_file" 2>/dev/null | sort -u || true)
-    if [ -z "$cited" ]; then
-        problem "$test_file names no claim id; a test that cites nothing proves nothing"
-    fi
-
-    # A test that declares no oracle class cannot be checked against one, so it
-    # cannot satisfy a confirmed claim either. Report it here where the file is
-    # named, rather than leaving the reader to work it out per claim.
-    classes=$(grep -oiE "$CLASS_RE" "$test_file" 2>/dev/null |
-        sed 's/.* //' | sort -u || true)
-    if [ -z "$classes" ]; then
-        problem "$test_file declares no oracle class"
-    fi
-    for class in $classes; do
-        case " $KNOWN_CLASSES " in
-            *" $class "*)
-                ;;
-            *)
-                problem "$test_file declares oracle class $class, which the trace table does not define"
-                ;;
-        esac
-    done
-done <<FILES
-$GATE_FILES
-FILES
 
 # --- the CONFIRMED extractor ---------------------------------------------------
 
@@ -604,10 +589,14 @@ file_classes() {
 # The inventory is read once and kept, because the map names every test and a
 # lookup per entry would start a process per lookup.
 declare -A TEST_CLAIM_SET=()
+declare -A TEST_HAS_CLAIM=()
 declare -A TEST_CLASS_SET=()
 declare -A FILE_CLASS_SET=()
 
 TEST_CLAIMS=''
+# Every test of every gate file, "file<TAB>test", in file order. Rule 1 reads
+# it, so it is built from the same pass that reads each test's own class.
+TEST_INVENTORY=''
 for f in $GATE_FILES; do
     [ -f "$f" ] || continue
     base=${f##*/}
@@ -616,6 +605,7 @@ $(test_claims "$f" | sed "s|^|$base\t|")"
     while IFS=$'\t' read -r name cls; do
         [ -n "$name" ] || continue
         TEST_CLASS_SET["$base|$name"]="$cls"
+        TEST_INVENTORY="${TEST_INVENTORY}${base}"$'\t'"${name}"$'\n'
     done <<CLASSES
 $(test_classes "$f")
 CLASSES
@@ -625,6 +615,9 @@ done
 while IFS=$'\t' read -r base name claim; do
     [ -n "$claim" ] || continue
     TEST_CLAIM_SET["$base|$name|$claim"]=1
+    # The set of the claims a test names, without the claim: rule 1 asks
+    # whether a test names any claim at all.
+    TEST_HAS_CLAIM["$base|$name"]=1
 done <<CLAIMS_TABLE
 $TEST_CLAIMS
 CLAIMS_TABLE
@@ -632,6 +625,52 @@ CLAIMS_TABLE
 test_cites_claim() {
     [ -n "${TEST_CLAIM_SET["$1|$2|$3"]:-}" ]
 }
+
+# --- rule 1: every gate test names a claim and declares an oracle class -------
+#
+# Both facts are read from the test's OWN doc comment. The claim id is the one
+# the `claim:` attribute carries, or, where the comment has no `claim:` line,
+# the claim ids the comment states in prose. The class is the one the
+# `oracle:` attribute carries, together with its continuation lines, because
+# an attribute may wrap over several lines and only its first line is not the
+# whole attribute.
+#
+# The failure names the file and the test, because a file that holds one test
+# with a claim and a class says nothing about the test beside it, and a reader
+# told only that a file is short of a claim cannot tell which test to fix.
+while IFS=$'\t' read -r base name; do
+    [ -n "$name" ] || continue
+    if [ -z "${TEST_HAS_CLAIM["$base|$name"]:-}" ]; then
+        problem "$base::$name names no claim id; a test that cites nothing proves nothing"
+    fi
+    classes=${TEST_CLASS_SET["$base|$name"]:-NONE}
+    if [ "$classes" = "NONE" ]; then
+        problem "$base::$name declares no oracle class"
+    fi
+done <<TESTS
+$TEST_INVENTORY
+TESTS
+
+# The class a file mentions anywhere is checked against the classes the trace
+# table defines, because a class outside that set is a typo, and a typo here is
+# the same failure as no class at all: the claim looks covered.
+while IFS= read -r test_file; do
+    [ -n "$test_file" ] || continue
+    [ -f "$test_file" ] || continue
+    classes=$(grep -oiE "$CLASS_RE" "$test_file" 2>/dev/null |
+        sed 's/.* //' | sort -u || true)
+    for class in $classes; do
+        case " $KNOWN_CLASSES " in
+            *" $class "*)
+                ;;
+            *)
+                problem "$test_file declares oracle class $class, which the trace table does not define"
+                ;;
+        esac
+    done
+done <<FILES
+$GATE_FILES
+FILES
 
 # Every test function in one gate file, one name per line.
 test_names() {

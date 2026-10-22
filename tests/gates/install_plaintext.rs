@@ -397,6 +397,9 @@ fn discovered_candidates(install: &Install, master: &Archive, critter: &Archive)
 /// test lists all 31 by name, so a candidate that disappears, appears or is
 /// renamed fails (guide: Exact assertions, "A set of named cases is compared as
 /// a set").
+///
+/// oracle: class 3 (known plaintext: the loose file on disk, matched on path
+/// and on size)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_candidate_discovery_lists_all_thirty_one_names() {
@@ -503,6 +506,8 @@ fn dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte() {
 /// DAT-028 UNVERIFIED and says the spec author did not verify them. So this test
 /// asserts the guide's numbers and labels them as the guide's, rather than
 /// pretending to have measured them.
+///
+/// oracle: class 3 (known plaintext: the patched loose file on disk)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_three_patched_copies_differ_at_their_first_byte() {
@@ -552,6 +557,8 @@ fn dat_028_three_patched_copies_differ_at_their_first_byte() {
 /// test pins: the 31 candidates are the files that match on path *and* size,
 /// so the three that match on path alone are named here with the exact byte
 /// difference that excluded them.
+///
+/// oracle: class 3 (known plaintext: the excluded loose file on disk)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_three_loose_files_differ_in_size_and_are_excluded() {
@@ -591,6 +598,9 @@ fn dat_028_three_loose_files_differ_in_size_and_are_excluded() {
 /// 31 names DAT-028's first test pins is exactly the union of these two
 /// buckets, so a candidate that is neither exact nor patched, or one that is
 /// both, fails here.
+///
+/// oracle: class 3 (known plaintext: the loose file on disk, in exactly one
+/// bucket)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_every_candidate_is_accounted_for_in_exactly_one_bucket() {
