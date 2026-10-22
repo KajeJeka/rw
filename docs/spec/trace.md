@@ -4,8 +4,17 @@ Maps every claim id to the tests that prove it and to the oracle class of each
 test. `tools/check_trace.sh` fails when
 
 - a test names no claim id,
-- a `CONFIRMED AGAINST ORIGINAL BINARY` claim has no test in oracle class 1, 2 or 3, or
-- the number of tests for a claim has dropped.
+- a test declares no oracle class, or one the trace table does not define,
+- a `CONFIRMED AGAINST ORIGINAL BINARY` claim has no test in oracle class 1, 2 or 3,
+- the trace table's row for such a claim names a test that does not exist, that
+  lives in a file the root `Cargo.toml` does not declare as a `[[test]]` gate
+  target, or whose own doc attribute does not carry that claim id,
+- the map's class cell claims an oracle class the test does not declare,
+- a whole line evidence tag in a spec is claimed by no claim,
+- an exemption entry is malformed, or exempts nothing,
+- a test in the eight gate files is named by no row, or a claim id a test names
+  has no row, or
+- the map is empty.
 
 ## Oracle classes
 
@@ -27,9 +36,23 @@ One row per claim id. The test cell lists `file::test`, semicolon separated; the
 class cell lists that test's oracle class in the same order, so a class is always
 paired with the test to its left. A claim may appear in more than one gate file.
 
+The class cell is where the oracle class of each test is recorded, and it is the
+class the gate reads when it asks whether a `CONFIRMED AGAINST ORIGINAL BINARY`
+claim has a witness. The gate then proves that the row is telling the truth: the
+file has to be under `tests/gates/`, the root `Cargo.toml` has to declare it as
+a `[[test]]` gate target, the test has to exist in that file, and the test's own
+doc attribute has to carry the claim id.
+
+The class is not taken on trust. The gate reads the class from the test's own
+`oracle:` doc attribute and requires the map's cell to agree with it, so a map
+that relabels a class 5 test as class 1 fails the check instead of passing it.
+The witness rule reads the test's own class too, not the cell.
+
 A `†` marks a class taken from the module header of the file rather than
 restated on the test's own doc comment. It is the class the file declares, not a
-claim that this particular test re-declared it.
+claim that this particular test re-declared it. The gate checks a `†` class
+against the module header of the file and an unmarked class against the test's
+own `oracle:` line.
 
 A `‡` marks a value the ledger owns. The ledger row is the single source of the
 number, and the number is changed there first. DAT-021 ‡ carries the 39,038-byte
@@ -43,9 +66,34 @@ exact wording of every variant of `LittleEndianError`, `BigEndianError` and
 those sections the wording would be a value copied from the code under test,
 which the table above lists as not an oracle.
 
-Built by reading the seven files under `tests/gates/` and taking each `#[test]`'s
+Three witnesses in this map are joint, and the map says so where it matters.
+`install_plaintext.rs::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte`
+is class 3, known plaintext: one byte-for-byte comparison over 28 real archive
+entries constrains the LZSS rules it carries together rather than one at a time.
+`install_archive.rs::dat_023_every_entry_decodes_to_its_declared_uncompressed_size`
+is class 2: the closure over 20,456 chains constrains the corpus rules it
+carries together. Neither test isolates the rule it carries, and neither is
+meant to.
+
+The DAT root header is witnessed by two tests, and the two halves sit in two
+rows. `install_archive.rs::dat_025_directory_and_entry_counts_are_exact` reads
+the real header through the asset layer and closes its field 0 against the real
+directory count and its entries against the real entry totals (class 2, with
+the reference walk, class 4). The wrong order of the same four bytes is pinned
+by `synthetic_endian.rs::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers`,
+which is class 5 and cites END-035, END-006 and END-008: the little endian
+fold of the root header gives 1,090,519,040 for a directory count no archive
+holds, and that is the magnitude the asset layer is established by. END-035 is
+the claim that states the fold, so it is the row that names the class 5 half;
+DAT-001, DAT-002 and END-002 are the claims that state the header and its
+field meanings, and their rows name the class 2 half that closes the big endian
+reading against the real corpus.
+
+Built by reading the eight files under `tests/gates/` and taking each `#[test]`'s
 doc comment verbatim: the `claim:` line where there is one, otherwise the claim
-ids the doc comment states in prose. Nothing here is inferred.
+ids the doc comment states in prose. The `oracle:` line is the class, for the
+same reason: a test that mentions "a class 1, 2 or 3 witness" in passing
+declares nothing by it. Nothing here is inferred.
 
 ## Claim to test map
 
@@ -53,14 +101,19 @@ ids the doc comment states in prose. Nothing here is inferred.
 
 | Claim | Tests | Oracle class |
 | --- | --- | --- |
-| END-006 | `synthetic_endian.rs`::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers | 5 |
-| END-008 | `synthetic_endian.rs`::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers | 5 |
+| END-001 | `install_exe_tables.rs`::install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216 | 1 |
+| END-002 | `install_archive.rs`::dat_025_directory_and_entry_counts_are_exact | 2, 4 |
+| END-004 | `install_exe_tables.rs`::install_read_va_returns_every_table_window_from_dgroup_raw_data | 1 |
+| END-005 | `install_exe_tables.rs`::install_xp_table_holds_the_twenty_one_triangular_numbers_indexed_by_level | 1 |
+| END-006 | `install_exe_tables.rs`::install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216; `synthetic_endian.rs`::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers | 1; 5 |
+| END-007 | `install_exe_tables.rs`::install_xp_table_holds_the_twenty_one_triangular_numbers_indexed_by_level | 1 |
+| END-008 | `install_exe_tables.rs`::install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216; `synthetic_endian.rs`::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers | 1; 5 |
 | END-010 | `synthetic_endian.rs`::synthetic_no_default_order_and_no_conversion_between_the_layers | 6 |
 | END-011 | `synthetic_endian.rs`::synthetic_no_default_order_and_no_conversion_between_the_layers | 6 |
 | END-012 | `synthetic_endian.rs`::synthetic_no_default_order_and_no_conversion_between_the_layers | 6 |
 | END-013 | `synthetic_endian.rs`::synthetic_no_default_order_and_no_conversion_between_the_layers | 6 |
 | END-014 | `synthetic_endian.rs`::synthetic_each_read_consumes_exactly_its_own_width; `synthetic_endian.rs`::synthetic_remaining_falls_by_the_width_of_every_mixed_read; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 5; 6; 5; 5; 5; 5; 5; 5 |
-| END-015 | `synthetic_endian.rs`::synthetic_asset_layer_folds_the_most_significant_byte_first; `synthetic_endian.rs`::synthetic_executable_layer_folds_the_least_significant_byte_first; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 5; 5; 5; 5; 5; 5; 5; 5 |
+| END-015 | `install_exe_tables.rs`::install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_16777216; `synthetic_endian.rs`::synthetic_asset_layer_folds_the_most_significant_byte_first; `synthetic_endian.rs`::synthetic_executable_layer_folds_the_least_significant_byte_first; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 1; 5; 5; 5; 5; 5; 5; 5; 5 |
 | END-016 | `synthetic_endian.rs`::synthetic_signed_reads_reinterpret_the_folded_bits_rather_than_convert; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement | 5; 5; 5 |
 | END-017 | `synthetic_endian.rs`::synthetic_every_read_method_refuses_a_buffer_one_byte_short; `synthetic_endian.rs`::synthetic_every_read_method_refuses_an_empty_buffer; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 5; 5; 5; 5; 5; 5; 5; 5 |
 | END-018 | `synthetic_endian.rs`::synthetic_a_failed_read_leaves_the_cursor_exactly_where_it_was; `synthetic_endian.rs`::synthetic_every_bit_flip_of_the_asset_layer_answers; `synthetic_endian.rs`::synthetic_every_bit_flip_of_the_executable_layer_answers; `synthetic_endian.rs`::synthetic_every_read_method_refuses_a_buffer_one_byte_short; `synthetic_endian.rs`::synthetic_every_read_method_refuses_an_empty_buffer; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 6; 6; 6; 5; 5; 5; 5; 5; 5; 5; 5 |
@@ -69,54 +122,59 @@ ids the doc comment states in prose. Nothing here is inferred.
 | END-022 | `synthetic_endian.rs`::synthetic_every_error_names_its_offset_its_field_its_origin_and_no_content; `synthetic_endian.rs`::synthetic_the_asset_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_asset_layer_u16_folds_two_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_asset_layer_u32_folds_four_bytes_most_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_i16_reinterprets_two_bytes_as_two_complement; `synthetic_endian.rs`::synthetic_the_executable_layer_u16_folds_two_bytes_least_significant_first; `synthetic_endian.rs`::synthetic_the_executable_layer_u32_folds_four_bytes_least_significant_first | 5; 5; 5; 5; 5; 5; 5 |
 | END-023 | `synthetic_endian.rs`::synthetic_every_error_names_its_offset_its_field_its_origin_and_no_content | 5 |
 | END-024 | `synthetic_endian.rs`::synthetic_no_default_order_and_no_conversion_between_the_layers | 6 |
-| END-035 | `synthetic_endian.rs`::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers | 5 |
+| END-035 | `synthetic_endian.rs`::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers; `install_archive.rs`::dat_025_directory_and_entry_counts_are_exact | 5; 2, 4 |
 
 ### LZSS decoder (`docs/spec/lzss.md`)
 
 | Claim | Tests | Oracle class |
 | --- | --- | --- |
-| LZSS-001 | `synthetic_lzss.rs`::synthetic_no_ring_index_above_4095_is_addressable; `synthetic_lzss.rs`::synthetic_ring_constants_match_the_specified_values | 6; 5, 6 |
-| LZSS-002 | `synthetic_lzss.rs`::synthetic_canary_rejects_write_index_4095_zero_and_prefill_00; `synthetic_lzss.rs`::synthetic_fresh_ring_prefills_0_to_4077_and_zeroes_4078_to_4095; `synthetic_lzss.rs`::synthetic_ring_constants_match_the_specified_values; `synthetic_lzss.rs`::synthetic_vector_00000f_decodes_to_eighteen_spaces | 4; 5; 5, 6; 5 |
-| LZSS-003 | `synthetic_lzss.rs`::synthetic_canary_rejects_write_index_4095_zero_and_prefill_00; `synthetic_lzss.rs`::synthetic_output_position_maps_to_ring_slot_position_plus_4078; `synthetic_lzss.rs`::synthetic_ring_constants_match_the_specified_values | 4; 6; 5, 6 |
+| LZSS-001 | `synthetic_lzss.rs`::synthetic_no_ring_index_above_4095_is_addressable; `synthetic_lzss.rs`::synthetic_ring_constants_match_the_specified_values; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 6; 5, 6; 3 |
+| LZSS-002 | `synthetic_lzss.rs`::synthetic_canary_rejects_write_index_4095_zero_and_prefill_00; `synthetic_lzss.rs`::synthetic_fresh_ring_prefills_0_to_4077_and_zeroes_4078_to_4095; `synthetic_lzss.rs`::synthetic_ring_constants_match_the_specified_values; `synthetic_lzss.rs`::synthetic_vector_00000f_decodes_to_eighteen_spaces; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 4; 5; 5, 6; 5; 3 |
+| LZSS-003 | `synthetic_lzss.rs`::synthetic_canary_rejects_write_index_4095_zero_and_prefill_00; `synthetic_lzss.rs`::synthetic_output_position_maps_to_ring_slot_position_plus_4078; `synthetic_lzss.rs`::synthetic_ring_constants_match_the_specified_values; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 4; 6; 5, 6; 3 |
 | LZSS-004 | `synthetic_lzss.rs`::synthetic_no_ring_index_above_4095_is_addressable | 6 |
-| LZSS-005 | `synthetic_lzss.rs`::synthetic_input_exhaustion_mid_control_byte_is_not_an_error; `synthetic_lzss.rs`::synthetic_match_length_range_is_exactly_three_to_eighteen; `synthetic_lzss.rs`::synthetic_vector_00000f_decodes_to_eighteen_spaces | 5; 5; 5 |
-| LZSS-006 | `synthetic_lzss.rs`::synthetic_every_bit_flip_answers_without_panicking | 6 |
-| LZSS-008 | `synthetic_lzss.rs`::synthetic_match_length_range_is_exactly_three_to_eighteen; `synthetic_lzss.rs`::synthetic_ring_constants_match_the_specified_values; `synthetic_lzss.rs`::synthetic_source_index_is_an_absolute_position_not_a_distance; `synthetic_lzss.rs`::synthetic_vector_token_4e_36_at_output_5000_copies_from_output_4960; `synthetic_lzss.rs`::synthetic_vector_token_75_3f_at_write_index_886_repeats_the_previous_byte | 5; 5, 6; 5; 5; 5 |
-| LZSS-009 | `synthetic_lzss.rs`::synthetic_output_position_maps_to_ring_slot_position_plus_4078; `synthetic_lzss.rs`::synthetic_source_index_is_an_absolute_position_not_a_distance; `synthetic_lzss.rs`::synthetic_vector_token_4e_36_at_output_5000_copies_from_output_4960; `synthetic_lzss.rs`::synthetic_vector_token_75_3f_at_write_index_886_repeats_the_previous_byte | 6; 5; 5; 5 |
-| LZSS-010 | `synthetic_lzss.rs`::synthetic_output_position_maps_to_ring_slot_position_plus_4078; `synthetic_lzss.rs`::synthetic_vector_token_4e_36_at_output_5000_copies_from_output_4960 | 6; 5 |
-| LZSS-011 | `synthetic_lzss.rs`::synthetic_overlapping_run_replicates_its_own_output_byte_for_byte; `synthetic_lzss.rs`::synthetic_vector_token_75_3f_at_write_index_886_repeats_the_previous_byte | 5; 5 |
-| LZSS-012 | `synthetic_lzss.rs`::synthetic_fresh_ring_prefills_0_to_4077_and_zeroes_4078_to_4095; `synthetic_lzss.rs`::synthetic_no_ring_index_above_4095_is_addressable; `synthetic_lzss.rs`::synthetic_output_position_maps_to_ring_slot_position_plus_4078 | 5; 6; 6 |
-| LZSS-013 | `synthetic_lzss.rs`::synthetic_every_bit_flip_answers_without_panicking; `synthetic_lzss.rs`::synthetic_input_exhaustion_mid_control_byte_is_not_an_error; `synthetic_lzss.rs`::synthetic_vector_00000f_decodes_to_eighteen_spaces; `install_archive.rs`::lzss_014_a_stream_one_byte_short_and_one_byte_long_both_fail | 6; 5; 5; 4, 5 |
+| LZSS-005 | `synthetic_lzss.rs`::synthetic_input_exhaustion_mid_control_byte_is_not_an_error; `synthetic_lzss.rs`::synthetic_match_length_range_is_exactly_three_to_eighteen; `synthetic_lzss.rs`::synthetic_vector_00000f_decodes_to_eighteen_spaces; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 5; 5; 5; 3 |
+| LZSS-006 | `synthetic_lzss.rs`::synthetic_every_bit_flip_answers_without_panicking; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 6; 3 |
+| LZSS-007 | `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 3 |
+| LZSS-008 | `synthetic_lzss.rs`::synthetic_match_length_range_is_exactly_three_to_eighteen; `synthetic_lzss.rs`::synthetic_ring_constants_match_the_specified_values; `synthetic_lzss.rs`::synthetic_source_index_is_an_absolute_position_not_a_distance; `synthetic_lzss.rs`::synthetic_vector_token_4e_36_at_output_5000_copies_from_output_4960; `synthetic_lzss.rs`::synthetic_vector_token_75_3f_at_write_index_886_repeats_the_previous_byte; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 5; 5, 6; 5; 5; 5; 3 |
+| LZSS-009 | `synthetic_lzss.rs`::synthetic_output_position_maps_to_ring_slot_position_plus_4078; `synthetic_lzss.rs`::synthetic_source_index_is_an_absolute_position_not_a_distance; `synthetic_lzss.rs`::synthetic_vector_token_4e_36_at_output_5000_copies_from_output_4960; `synthetic_lzss.rs`::synthetic_vector_token_75_3f_at_write_index_886_repeats_the_previous_byte; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 6; 5; 5; 5; 3 |
+| LZSS-010 | `synthetic_lzss.rs`::synthetic_output_position_maps_to_ring_slot_position_plus_4078; `synthetic_lzss.rs`::synthetic_vector_token_4e_36_at_output_5000_copies_from_output_4960; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 6; 5; 3 |
+| LZSS-011 | `synthetic_lzss.rs`::synthetic_overlapping_run_replicates_its_own_output_byte_for_byte; `synthetic_lzss.rs`::synthetic_vector_token_75_3f_at_write_index_886_repeats_the_previous_byte; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 5; 5; 3 |
+| LZSS-012 | `synthetic_lzss.rs`::synthetic_fresh_ring_prefills_0_to_4077_and_zeroes_4078_to_4095; `synthetic_lzss.rs`::synthetic_no_ring_index_above_4095_is_addressable; `synthetic_lzss.rs`::synthetic_output_position_maps_to_ring_slot_position_plus_4078; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 5; 6; 6; 3 |
+| LZSS-013 | `synthetic_lzss.rs`::synthetic_every_bit_flip_answers_without_panicking; `synthetic_lzss.rs`::synthetic_input_exhaustion_mid_control_byte_is_not_an_error; `synthetic_lzss.rs`::synthetic_vector_00000f_decodes_to_eighteen_spaces; `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size; `install_archive.rs`::lzss_014_a_stream_one_byte_short_and_one_byte_long_both_fail | 6; 5; 5; 2†; 4, 5 |
 | LZSS-014 | `synthetic_lzss.rs`::synthetic_every_bit_flip_answers_without_panicking; `synthetic_lzss.rs`::synthetic_input_ending_before_the_declared_size_is_an_error; `synthetic_lzss.rs`::synthetic_input_exhaustion_mid_control_byte_is_not_an_error; `synthetic_lzss.rs`::synthetic_output_would_exceed_the_declared_size_is_an_error; `synthetic_lzss.rs`::synthetic_overrun_by_exactly_one_byte_is_an_error; `synthetic_dat.rs`::synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met; `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size; `install_archive.rs`::lzss_014_a_stream_one_byte_short_and_one_byte_long_both_fail | 6; 5; 5; 5; 5; 5; 2†; 4, 5 |
 | LZSS-015 | `synthetic_lzss.rs`::synthetic_mid_pair_back_reference_is_an_error_not_a_loop; `synthetic_dat.rs`::synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met | 5; 5 |
-| LZSS-016 | `synthetic_lzss.rs`::synthetic_reset_returns_a_fresh_ring | 5 |
-| LZSS-017 | `synthetic_lzss.rs`::synthetic_vector_token_4e_36_at_output_5000_copies_from_output_4960 | 5 |
-| LZSS-018 | `synthetic_lzss.rs`::synthetic_vector_00000f_decodes_to_eighteen_spaces | 5 |
-| LZSS-019 | `synthetic_lzss.rs`::synthetic_vector_token_75_3f_at_write_index_886_repeats_the_previous_byte | 5 |
+| LZSS-016 | `synthetic_lzss.rs`::synthetic_reset_returns_a_fresh_ring; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 5; 3 |
+| LZSS-017 | `synthetic_lzss.rs`::synthetic_vector_token_4e_36_at_output_5000_copies_from_output_4960; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 5; 3 |
+| LZSS-018 | `synthetic_lzss.rs`::synthetic_vector_00000f_decodes_to_eighteen_spaces; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 5; 3 |
+| LZSS-019 | `synthetic_lzss.rs`::synthetic_vector_token_75_3f_at_write_index_886_repeats_the_previous_byte; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 5; 3 |
+| LZSS-020 | `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size | 2† |
 | LZSS-021 | `synthetic_lzss.rs`::synthetic_canary_rejects_write_index_4095_zero_and_prefill_00 | 4 |
+| LZSS-022 | `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size | 2† |
+| LZSS-023 | `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size | 2† |
 
 ### DAT archive container (`docs/spec/dat.md`)
 
 | Claim | Tests | Oracle class |
 | --- | --- | --- |
-| DAT-001 | `synthetic_dat.rs`::synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at; `synthetic_dat.rs`::synthetic_round_trip_reads_every_field | 5; 4, 5 |
-| DAT-002 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `synthetic_dat.rs`::synthetic_every_bit_flip_of_the_root_header_answers_without_panicking; `synthetic_dat.rs`::synthetic_malformed_trees_are_errors; `synthetic_dat.rs`::synthetic_the_directory_list_is_the_root_header_names_in_file_order | 4, 5; 5, 6; 5; 4, 5 |
-| DAT-003 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `synthetic_dat.rs`::synthetic_malformed_trees_are_errors; `synthetic_dat.rs`::synthetic_the_directory_list_is_the_root_header_names_in_file_order | 4, 5; 5; 4, 5 |
-| DAT-004 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field | 4, 5 |
+| DAT-001 | `synthetic_dat.rs`::synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at; `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `install_archive.rs`::dat_025_directory_and_entry_counts_are_exact | 5; 4, 5; 2, 4 |
+| DAT-002 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `synthetic_dat.rs`::synthetic_every_bit_flip_of_the_root_header_answers_without_panicking; `synthetic_dat.rs`::synthetic_malformed_trees_are_errors; `synthetic_dat.rs`::synthetic_the_directory_list_is_the_root_header_names_in_file_order; `install_archive.rs`::dat_025_directory_and_entry_counts_are_exact | 4, 5; 5, 6; 5; 4, 5; 2, 4 |
+| DAT-003 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `synthetic_dat.rs`::synthetic_malformed_trees_are_errors; `synthetic_dat.rs`::synthetic_the_directory_list_is_the_root_header_names_in_file_order; `install_archive.rs`::dat_029_real_lookups_return_the_measured_entries | 4, 5; 5; 4, 5; 2† |
+| DAT-004 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `install_archive.rs`::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen | 4, 5; 2, 4 |
 | DAT-005 | `synthetic_dat.rs`::synthetic_block_field_0_is_the_entry_count_not_the_directory_count; `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `install_archive.rs`::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen | 6; 4, 5; 2, 4 |
 | DAT-006 | `synthetic_dat.rs`::synthetic_block_field_2_is_the_trailer_width_not_the_record_size; `install_archive.rs`::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen | 6; 2, 4 |
-| DAT-008 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field | 4, 5 |
-| DAT-009 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field | 4, 5 |
+| DAT-007 | `install_archive.rs`::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen | 2, 5 |
+| DAT-008 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `install_archive.rs`::dat_022_every_block_chain_consumes_exactly_its_compressed_size | 4, 5; 2, 4 |
+| DAT-009 | `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size | 4, 5; 2† |
 | DAT-010 | `synthetic_dat.rs`::synthetic_lookup_is_by_uppercased_path_and_an_absent_path_is_not_an_error; `install_archive.rs`::dat_029_real_lookups_return_the_measured_entries | 6; 2† |
 | DAT-011 | `synthetic_dat.rs`::synthetic_dot_directory_name_composes_no_prefix_and_a_named_one_does; `synthetic_dat.rs`::synthetic_round_trip_reads_every_field; `install_archive.rs`::dat_011_path_composition_keys_on_the_directory_name | 5; 4, 5; 2† |
 | DAT-012 | `synthetic_dat.rs`::synthetic_tree_order_is_not_physical_order; `install_archive.rs`::dat_029_real_lookups_return_the_measured_entries | 5; 2† |
 | DAT-013 | `synthetic_dat.rs`::synthetic_payload_mode_is_the_flags_high_nibble; `synthetic_dat.rs`::synthetic_unknown_payload_nibble_is_an_error_not_a_default; `install_archive.rs`::dat_017_stored_and_chain_entries_split_on_their_compressed_size; `install_archive.rs`::dat_026_payload_mode_counts_are_exact | 6; 5; 2; 2 |
 | DAT-014 | `synthetic_dat.rs`::synthetic_payload_mode_is_the_flags_high_nibble | 6 |
-| DAT-015 | `synthetic_dat.rs`::synthetic_payload_mode_is_the_flags_high_nibble; `synthetic_dat.rs`::synthetic_stored_entry_takes_the_uncompressed_size_and_rejects_a_nonzero_compressed_size | 6; 5 |
-| DAT-016 | `synthetic_dat.rs`::synthetic_chain_mixes_one_raw_block_and_one_lzss_block_in_stored_order; `synthetic_dat.rs`::synthetic_payload_mode_is_the_flags_high_nibble | 4, 5; 6 |
+| DAT-015 | `synthetic_dat.rs`::synthetic_payload_mode_is_the_flags_high_nibble; `synthetic_dat.rs`::synthetic_stored_entry_takes_the_uncompressed_size_and_rejects_a_nonzero_compressed_size; `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size | 6; 5; 2† |
+| DAT-016 | `synthetic_dat.rs`::synthetic_chain_mixes_one_raw_block_and_one_lzss_block_in_stored_order; `synthetic_dat.rs`::synthetic_payload_mode_is_the_flags_high_nibble; `install_archive.rs`::dat_022_every_block_chain_consumes_exactly_its_compressed_size | 4, 5; 6; 2, 4 |
 | DAT-017 | `synthetic_dat.rs`::synthetic_stored_entry_takes_the_uncompressed_size_and_rejects_a_nonzero_compressed_size; `install_archive.rs`::dat_017_stored_and_chain_entries_split_on_their_compressed_size | 5; 2 |
-| DAT-018 | `synthetic_dat.rs`::synthetic_chain_mixes_one_raw_block_and_one_lzss_block_in_stored_order; `synthetic_dat.rs`::synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met | 4, 5; 5 |
-| DAT-019 | `synthetic_dat.rs`::synthetic_a_chain_of_two_lzss_blocks_gives_each_block_a_fresh_ring | 4, 5 |
+| DAT-018 | `synthetic_dat.rs`::synthetic_chain_mixes_one_raw_block_and_one_lzss_block_in_stored_order; `synthetic_dat.rs`::synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met; `install_archive.rs`::dat_020_chain_stats_totals_equal_the_framing_census | 4, 5; 5; 2, 4 |
+| DAT-019 | `synthetic_dat.rs`::synthetic_a_chain_of_two_lzss_blocks_gives_each_block_a_fresh_ring; `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size | 4, 5; 2† |
 | DAT-020 | `synthetic_dat.rs`::synthetic_chain_mixes_one_raw_block_and_one_lzss_block_in_stored_order; `install_archive.rs`::dat_020_chain_stats_totals_equal_the_framing_census; `install_archive.rs`::dat_022_every_block_chain_consumes_exactly_its_compressed_size | 4, 5; 2, 4; 2, 4 |
 | DAT-021 ‡ | `synthetic_dat.rs`::synthetic_a_stored_region_is_bounded_by_the_compressed_size_not_the_uncompressed_one; `install_archive.rs`::dat_021_the_stored_extent_is_bounded_by_the_compressed_size | 5; 2†, 4 |
 | DAT-022 | `synthetic_dat.rs`::synthetic_chain_block_headers_account_for_the_compressed_size_exactly; `install_archive.rs`::dat_022_every_block_chain_consumes_exactly_its_compressed_size | 5; 2, 4 |
@@ -124,9 +182,10 @@ ids the doc comment states in prose. Nothing here is inferred.
 | DAT-024 | `synthetic_dat.rs`::synthetic_declared_output_larger_than_the_payload_produces_is_an_error; `synthetic_dat.rs`::synthetic_stream_one_byte_short_and_one_byte_long_are_each_errors; `synthetic_dat.rs`::synthetic_every_error_variant_names_what_went_wrong; `synthetic_dat.rs`::synthetic_a_chain_block_that_ends_mid_back_reference_says_whether_the_declaration_was_met; `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size | 5; 5; 5; 5; 2† |
 | DAT-025 | `install_archive.rs`::dat_025_directory_and_entry_counts_are_exact; `install_archive.rs`::the_install_fingerprint_is_exact; `install_archive.rs`::the_harness_rejects_a_foreign_install | 2, 4; 2; 2† |
 | DAT-026 | `install_archive.rs`::dat_026_payload_mode_counts_are_exact | 2 |
+| DAT-027 | `install_archive.rs`::dat_020_chain_stats_totals_equal_the_framing_census | 2, 4 |
 | DAT-028 | `install_plaintext.rs`::dat_028_candidate_discovery_lists_all_thirty_one_names; `install_plaintext.rs`::dat_028_three_patched_copies_differ_at_their_first_byte; `install_plaintext.rs`::dat_028_three_loose_files_differ_in_size_and_are_excluded; `install_plaintext.rs`::dat_028_every_candidate_is_accounted_for_in_exactly_one_bucket; `install_plaintext.rs`::every_candidate_decodes_to_its_declared_uncompressed_size; `install_archive.rs`::dat_028_the_three_loose_size_exclusions_are_exact | 3†; 3†; 3†; 3†; 6; 2, 5 |
 | DAT-029 | `install_archive.rs`::dat_029_real_lookups_return_the_measured_entries; `install_plaintext.rs`::dat_028_candidate_discovery_lists_all_thirty_one_names; `install_plaintext.rs`::dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte | 2†; 3†; 3 |
-| DAT-030 | `synthetic_dat.rs`::synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at; `synthetic_dat.rs`::synthetic_the_archive_reports_the_label_it_was_parsed_under; `synthetic_dat.rs`::synthetic_every_error_variant_names_what_went_wrong | 5; 5; 5 |
+| DAT-030 | `synthetic_dat.rs`::synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at; `synthetic_dat.rs`::synthetic_the_archive_reports_the_label_it_was_parsed_under; `synthetic_dat.rs`::synthetic_every_error_variant_names_what_went_wrong; `install_archive.rs`::dat_023_every_entry_decodes_to_its_declared_uncompressed_size | 5; 5; 5; 2† |
 | DAT-033 | `synthetic_dat.rs`::synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted | 5 |
 | DAT-034 | `synthetic_dat.rs`::synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted | 5 |
 
@@ -152,67 +211,133 @@ ids the doc comment states in prose. Nothing here is inferred.
 | EXETBL-016 | `install_exe_tables.rs`::install_stat_limits_are_thirty_eight_records_of_six_fields_with_a_zero_field_zero | 1 |
 | EXETBL-017 | `install_exe_tables.rs`::install_stat_limits_are_thirty_eight_records_of_six_fields_with_a_zero_field_zero | 1 |
 
+### Hold-out vectors (`docs/spec/holdout.md`)
+
+| Claim | Tests | Oracle class |
+| --- | --- | --- |
+| HOLD-001 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-003 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-004 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-005 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-006 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-007 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-008 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-009 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-010 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-011 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-012 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-013 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-014 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-015 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-016 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-017 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-018 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest | 4 |
+| HOLD-020 | `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 1 |
+| HOLD-021 | `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 1 |
+| HOLD-022 | `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 1 |
+| HOLD-023 | `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 1 |
+| HOLD-025 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-026 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+| HOLD-027 | `install_holdout.rs`::holdout_dat_vectors_decode_to_the_declared_size_and_digest; `install_holdout.rs`::holdout_exe_table_vectors_match_the_reference_executable_bytes | 4; 1 |
+
 ## Claims with no test
 
-27 of the 110 claim ids in `docs/spec/*.md` are cited by no gate test. Each reason below is why, not an excuse.
+25 of the 143 claim ids in `docs/spec/*.md` are cited by no gate test. Each reason below is why, not an excuse.
 
 | Claim | Why there is no test |
 | --- | --- |
-| DAT-007 | Confirmed. `install_archive.rs::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen` opens the same 66 block headers but asserts only fields 0 and 2. Nothing pins the block-level capacity and dead pointer. Coverable by two more assertions in that test; not written. |
-| DAT-027 | Confirmed. The framing constants are pinned by the ledger: DAT-C050 carries the 0x8000 raw mask and DAT-C051 the 0x7FFF length ceiling, both marked confirmed against the original binary, and the spec prose repeats them. No gate test names the claim, so the constants are pinned in the ledger but nothing in the gate exercises them: `synthetic_dat.rs::synthetic_chain_mixes_one_raw_block_and_one_lzss_block_in_stored_order` builds a chain under DAT-016/018/019/020 and never cites the framing constants. Coverable by citing DAT-027 on that test; not written. |
 | DAT-031 | UNVERIFIED. A construction rule: uppercasing belongs to the caller, not to the parser. The behaviour is graded under DAT-010 (`synthetic_dat.rs::synthetic_lookup_is_by_uppercased_path_and_an_absent_path_is_not_an_error`), which cites the wrong id for this mandate. Covered in substance, cited under DAT-010. |
 | DAT-032 | UNVERIFIED. Same construction rule as DAT-031: exact match against the stored uppercase path. Graded under DAT-010, cited there. |
-| END-001 | Confirmed. A scoping claim: two layers exist, asset big-endian and executable little-endian. The nearest test is `synthetic_endian.rs::synthetic_no_default_order_and_no_conversion_between_the_layers`, which cites END-010/011/012/013/024 and not END-001. Substantively covered, cited under the layer-specific ids. |
-| END-002 | Confirmed. The DAT root header is big-endian. `synthetic_dat.rs::synthetic_round_trip_reads_every_field` builds those 16 bytes as literals and asserts the parsed fields under DAT-001, so the byte order is assumed by the fixture rather than graded. Four bytes that fold both ways would settle it. Not written. |
 | END-003 | CONFIRMED IN COMMUNITY EDITION ONLY. The asset-layer extension list. No crate in this phase reads `.PRO`, `.FRM`, `.MAP`, `.GCD`, `.AAF` or `.INT`; the asset layer has no reader yet, so nothing can grade the list. |
-| END-004 | Confirmed. Which tables live in the executable layer. `install_exe_tables.rs` proves every one of them under EXETBL-003 to EXETBL-009 and never cites END-004. Substantively covered, cited under the table ids. |
-| END-005 | Confirmed. The XP thresholds table is 21 i32 at 0x5082D0. `install_exe_tables.rs::install_xp_table_holds_the_twenty_one_triangular_numbers_indexed_by_level` proves exactly this under EXETBL-009. |
-| END-007 | Confirmed. The unscaled triangular numbers and the 1,000 scale. `install_exe_tables.rs::install_xp_table_holds_the_twenty_one_triangular_numbers_indexed_by_level` proves the table under EXETBL-015; the scale itself is ledger row EXETBL-C821, tagged UNVERIFIED there because the bytes do not say who multiplies. |
-| END-009 | Confirmed. A crate-boundary mandate: no crate outside the two endian crates reads an integer by another route. Its natural test is a dependency-graph or forbidden-import scan over `crates/*`, which is not a gate test in this phase. |
+| END-009 | UNVERIFIED. A crate-boundary mandate: no crate outside the two endian crates reads an integer by another route. Its natural test is a dependency-graph or forbidden-import scan over `crates/*`, which is not a gate test in this phase, and no oracle class in the guide describes a fact about the source tree. |
 | END-021 | UNVERIFIED. A construction rule: one error enum per crate, a closed set, matched with no wildcard arm. `synthetic_endian.rs` grades what the variants carry (END-022, END-023) but never the per-crate enum count. Coverable by a `const _: () = ...` assertion; not written. |
 | END-025 | CONFIRMED IN COMMUNITY EDITION ONLY. The `.ACM` 14-byte little-endian header. No crate in this phase reads an audio file; the spec itself queues the byte check. |
 | END-026 | CONFIRMED IN COMMUNITY EDITION ONLY. The `.MVE` 18-byte magic. No crate in this phase reads a movie; the spec itself queues the byte check. |
 | END-027 | UNVERIFIED. `.LIP` layout, with the community reader diverging at 0x14. The spec directs the reader to isolate it and not read a shipped `.LIP` until the layout is settled. No test can exist before the layout is. |
-| END-028 | Confirmed. The 30,051-byte big-endian save header. No save crate exists in this phase. |
-| END-029 | Confirmed. Save block 20, the world map, 899 + 105 + 24 closing on 1,028. No save crate exists in this phase. |
+| END-028 | CONFIRMED AGAINST ORIGINAL BINARY, exempt. The 30,051-byte big-endian save header. No save crate exists in this phase, so no gate test reads a save file; the bytes are in the install and a class 2 test through the `fo1-tests` harness could witness them once a save reader exists. The exemption is in the section below. |
+| END-029 | CONFIRMED AGAINST ORIGINAL BINARY, exempt. Save block 20, the world map, 899 + 105 + 24 closing on 1,028. No save crate exists in this phase, so no gate test reads a save file; the bytes are in the install and a class 2 test through the `fo1-tests` harness could witness them once a save reader exists. The exemption is in the section below. |
 | END-030 | UNVERIFIED. Save block 23, whose element type the spec explicitly refuses to fix. The spec directs the reader to a function in the executable first. A test would have to pick a width the spec forbids picking. |
 | END-031 | CONFIRMED IN COMMUNITY EDITION ONLY. The port save format, which is this project's own file. No save crate and no port format exists in this phase. |
 | END-032 | VERSION DIFFERENCE IDENTIFIED. A statement that the guide's single big-endian rule is superseded by correction C1. It records a decision, not a behaviour, so it has nothing to grade. |
 | END-033 | VERSION DIFFERENCE IDENTIFIED. A statement that the older `.INT` note is discarded and must not be implemented. Same shape: a decision, not a behaviour. |
-| LZSS-007 | Confirmed. A clear control bit is a two-byte back reference. Same shape as LZSS-006 was before it was mapped: a synthetic vector proves the token shape in substance, but no test cites the claim id. Coverable by citing it on `synthetic_vector_token_75_3f_...`. |
-| LZSS-020 | Confirmed, and a negative record. It pins the discarded older note's figure (LZSS-C050, LZSS-C051) so it is not rediscovered and reused. It asserts nothing the decoder can do wrong; no test can observe it. |
-| LZSS-022 | Confirmed. Corpus closure, 20,456 chains decoded with `produced == uncompressed_size` and `consumed == compressed_size`. `install_archive.rs::dat_023_every_entry_decodes_to_its_declared_uncompressed_size` asserts exactly this closure and cites DAT-023, DAT-024 and LZSS-014. Covered in substance, cited under the DAT ids. |
-| LZSS-023 | Confirmed. The corpus's largest source index request. `synthetic_lzss.rs::synthetic_no_ring_index_above_4095_is_addressable` asserts exactly this bound and cites LZSS-001, LZSS-004 and LZSS-012. Covered in substance, cited under the ring ids. |
 | LZSS-024 | UNVERIFIED. An interface claim, and one the spec itself records as stated twice with two spellings. `synthetic_lzss.rs` exercises both spellings but cites LZSS-013/014/005 for the behaviour. A compile-time signature assertion would cover it; not written. |
 | LZSS-025 | Community Edition agrees on the same value. No Community Edition artefact is in scope and no CE source is quoted, so nothing here can grade it. |
+| HOLD-002 | UNVERIFIED. A publication rule: the repository holds no vector data at all. It is a property of what was committed, not of a behaviour, and `tools/check_public.sh` is what holds it. |
+| HOLD-019 | UNVERIFIED. A rule about the owner's generator: the DAT vectors are made by a decoder written from the specifications alone and in another language. Nothing inside this workspace can observe how the vectors were made. |
+| HOLD-024 | UNVERIFIED. The same rule for the executable table vectors: the expected bytes are read out of the reference executable by a separate extraction tool. The gate can check the bytes it is given; it cannot check who wrote them. |
+| HOLD-028 | UNVERIFIED. A layering rule: no crate in this workspace may read the references directory. `tools/check_layers.sh` and the banned pattern lint over the production sources are what hold it. |
+| HOLD-029 | UNVERIFIED. A rule about the vectors, not about the reader: the first milestone's set holds 60 DAT vectors covering 32 families. The reader checks the count the manifest declares, and the families themselves belong to `docs/spec/dat.md` and `docs/spec/lzss.md`. |
+| HOLD-030 | UNVERIFIED. The rules every DAT vector obeys. The generator asserts them before a vector reaches the manifest, and the gate grades the reader against the vectors rather than against the generator. |
+| HOLD-031 | UNVERIFIED. The same rule for the executable table vectors: 12 of them, covering 16 families, with the offsets and extents owned by `docs/spec/exe-tables.md`. |
+| HOLD-032 | UNVERIFIED. The rules every executable table vector obeys. The generator asserts them, and the manifest's digest is what binds the set to the bytes. |
+| HOLD-033 | UNVERIFIED. A rule about the owner's generator and seed. The seed is provenance and the reader uses it for nothing at all, which HOLD-008 already records. |
 
 ## Claims with an open gap
 
-Eight claims are listed here. Four carry a test, so each has a row in the map above, and the gap below is what that test does not settle. Four carry no test row at all, and the row names the witness that is missing. Each reason is what is still missing, not an excuse.
+Six claims are listed here. Two carry a test, so each has a row in the map above, and the gap below is what that test does not settle. Four carry no test row at all, and the row names the witness that is missing. Each reason is what is still missing, not an excuse.
 
 | Claim | What is still missing |
 | --- | --- |
-| DAT-007 | Confirmed. Missing witness: block fields 1 and 3. `install_archive.rs::dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen` opens the same 66 block headers but asserts only fields 0 and 2, so nothing pins the block-level capacity and the dead pointer. Coverable by two more assertions in that test. |
 | DAT-021 | Confirmed. The rule is graded by `synthetic_dat.rs::synthetic_a_stored_region_is_bounded_by_the_compressed_size_not_the_uncompressed_one`, and the corpus is graded by `install_archive.rs::dat_021_the_stored_extent_is_bounded_by_the_compressed_size`, which walks all 25,243 entries of both archives, asserts that 0 of them have a stored extent past the end of their archive, and asserts that exactly the 7 entries the spec names have a decoded extent past it, each with its exact overrun in bytes. The corpus test is written. The ledger holds the measured consequence (DAT-C120: 0 entries past EOF; DAT-C110: the uncompressed bound fails by 39038). DAT-C110 is the single source of the 39,038-byte overrun; `docs/spec/dat.md` and the test's `39_038` literal repeat it. What is still missing is a witness that the three copies of the number agree: no test compares the spec prose or the test literal against DAT-C110. |
-| DAT-027 | Confirmed. Missing witness: the framing constants. The ledger pins them (DAT-C050: the 0x8000 raw mask; DAT-C051: the 0x7FFF length ceiling), but no gate test names the claim, so nothing in the gate exercises them. `synthetic_dat.rs::synthetic_chain_mixes_one_raw_block_and_one_lzss_block_in_stored_order` builds a chain under DAT-016/018/019/020 and never cites them. Coverable by citing DAT-027 on that test. |
-| DAT-030 | Confirmed. Three members of the interface are graded. `synthetic_dat.rs::synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at` asserts the whole `DatError::Truncated { at }` value against the byte position the root header layout fixes, `synthetic_dat.rs::synthetic_the_archive_reports_the_label_it_was_parsed_under` asserts that the archive carries the label `parse` was handed, and `synthetic_dat.rs::synthetic_every_error_variant_names_what_went_wrong` asserts that every variant of the error type renders a message of its own that names the quantity it is about. What is still missing is a compile-time signature assertion of the kind `synthetic_endian.rs` carries in its `const _` block: the three tests pin the error's byte position, the origin label and each variant's message, not the field names and types of the whole shape of the interface. |
+| DAT-030 | UNVERIFIED, lowered by the spec lane. The claim is an interface: Rust types, signatures and error variants, and an interface is a decision this port makes, so no byte of the archive can witness it. Three members of the interface are graded anyway, and the corpus grades the whole surface over the real archives. `synthetic_dat.rs::synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at` asserts the whole `DatError::Truncated { at }` value against the byte position the root header layout fixes, `synthetic_dat.rs::synthetic_the_archive_reports_the_label_it_was_parsed_under` asserts that the archive carries the label `parse` was handed, and `synthetic_dat.rs::synthetic_every_error_variant_names_what_went_wrong` asserts that every variant of the error type renders a message of its own that names the quantity it is about. All three are class 5, which is why the claim needs no class 1, 2 or 3 witness. What is still missing is a compile-time signature assertion of the kind `synthetic_endian.rs` carries in its `const _` block: the three tests pin the error's byte position, the origin label and each variant's message, not the field names and types of the whole shape of the interface. |
 | DAT-031 | UNVERIFIED. Missing witness: a test that cites the claim. The behaviour is graded under DAT-010 by `synthetic_dat.rs::synthetic_lookup_is_by_uppercased_path_and_an_absent_path_is_not_an_error`, which cites the wrong id for this mandate. |
 | DAT-032 | UNVERIFIED. Missing witness: a test that cites the claim. Same construction rule as DAT-031: exact match against the stored uppercase path, graded under DAT-010 and cited there. |
 | DAT-033 | UNVERIFIED, added by an orchestrator ruling. No byte evidence establishes a zero field 0 as malformed. The behaviour is asserted by `synthetic_dat.rs::synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted`, which annotates `claim: DAT-033, DAT-034`. |
 | DAT-034 | UNVERIFIED, added by an orchestrator ruling. Same status and same citation as DAT-033. |
 
+Two more claims carry a test and still have no class 1, 2 or 3 witness: END-014 and
+END-016. Their rows name the class 5 and class 6 synthetic endian tests, which
+pin the widths and the signed reinterpretation against hand computed vectors,
+and the executable layer's class 1 gate file does not cite them: the original's
+tables hold no `u8`, `u16` or `i16` field and no negative i32, so no byte of it
+witnesses either claim. `docs/spec/endian.md` carries the reason for each.
+
 ## Orchestrator-ruled claims
 
 DAT-031, DAT-032, DAT-033 and DAT-034 were added to `docs/spec/dat.md` by an orchestrator ruling rather than by a measurement. All four carry `UNVERIFIED`: DAT-031 and DAT-032 are construction rules about who uppercases and how a lookup matches, DAT-033 and DAT-034 record that a zero field 0 and a zero-length name parse, with no byte evidence that either is malformed. `check_trace.sh` therefore does not demand a class 1, 2 or 3 test for them, and none is written. The behaviour of DAT-033 and DAT-034 is asserted by `synthetic_dat.rs::synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted`, which annotates `claim: DAT-033, DAT-034`.
+
+## The exemptions
+
+An exemption is a named thing the gate would otherwise reject, with a reason.
+The entries live in the section below, in this PROTECTED file, so the owner reads
+every one of them. One entry per line, in this shape:
+
+    <key> :: <reason>
+
+The entry is read as the first `::` separator and the reason is everything after
+it, so a reason may hold a `::` of its own. An entry that is not in that shape,
+or that has an empty key or an empty reason, is malformed, and a malformed
+entry fails the check: an approval nobody can read is not an approval.
+
+There are two kinds of key:
+
+- a claim id, exempt from the witness rule: the claim is
+  `CONFIRMED AGAINST ORIGINAL BINARY` and no test in oracle class 1, 2 or 3 can
+  witness it yet;
+- a spec location, `file:line`, exempt from the unattributed tag rule: a whole
+  line evidence tag that no section of that file claims.
+
+An exemption that exempts nothing is a stale record, and a stale record fails
+the check too: it exempts a claim that is not confirmed, or a tag that is not
+there.
+
+## Exemptions
+
+END-028 :: the 30,051-byte big-endian save header. No save crate exists in this phase, so no gate test reads a save file and no oracle class 1, 2 or 3 test can witness the claim. The bytes are in the install, and a class 2 test through the `fo1-tests` harness can witness them once a save reader exists. The claim keeps its `CONFIRMED AGAINST ORIGINAL BINARY` tag because the guide records the binary confirming the constants, and the gate reads this entry instead of a witness that cannot exist yet.
+END-029 :: save block 20, the world map, 899 + 105 + 24 closing on 1,028. No save crate exists in this phase, so no gate test reads a save file and no oracle class 1, 2 or 3 test can witness the claim. The bytes are in the install, and a class 2 test through the `fo1-tests` harness can witness them once a save reader exists. The claim keeps its `CONFIRMED AGAINST ORIGINAL BINARY` tag because the guide records the binary confirming the constants, and the gate reads this entry instead of a witness that cannot exist yet.
+docs/spec/dat.md:952 :: the "Source disagreements" section of `docs/spec/dat.md` states a measured fact about the guide's own checklist, not a claim of this port, and its evidence tag names no claim. The section is `docs/spec/dat.md`'s to word, and this entry records that the tag is there on purpose until it is.
+docs/spec/dat.md:979 :: the "Source disagreements" section of `docs/spec/dat.md` states a measured disagreement between this spec's wording and the crate's own field doc comments, not a claim of this port, and its evidence tag names no claim. The section is `docs/spec/dat.md`'s to word, and this entry records that the tag is there on purpose until it is.
+docs/spec/dat.md:1005 :: the "Source disagreements" section of `docs/spec/dat.md` states a measured disagreement between this spec's wording and the crate's own `payload_mode` doc comment, not a claim of this port, and its evidence tag names no claim. The section is `docs/spec/dat.md`'s to word, and this entry records that the tag is there on purpose until it is.
 
 ## Totals
 
 | Subsystem | Claims in spec | Mapped | No test |
 | --- | --- | --- | --- |
-| END | 34 | 17 | 17 |
-| LZSS | 25 | 19 | 6 |
-| DAT | 34 | 30 | 4 |
+| END | 34 | 22 | 12 |
+| LZSS | 25 | 23 | 2 |
+| DAT | 34 | 32 | 2 |
 | EXETBL | 17 | 17 | 0 |
-| **all** | **110** | **83** | **27** |
+| HOLD | 33 | 24 | 9 |
+| **all** | **143** | **118** | **25** |
 
-137 tests across seven gate files: `synthetic_endian.rs` 22, `synthetic_lzss.rs` 18, `synthetic_dat.rs` 23, `synthetic_exe.rs` 31, `install_archive.rs` 14, `install_plaintext.rs` 6, `install_exe_tables.rs` 23.
+139 tests across eight gate files: `synthetic_endian.rs` 22, `synthetic_lzss.rs` 18, `synthetic_dat.rs` 23, `synthetic_exe.rs` 31, `install_archive.rs` 14, `install_plaintext.rs` 6, `install_exe_tables.rs` 23, `install_holdout.rs` 2.

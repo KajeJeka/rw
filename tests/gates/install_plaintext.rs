@@ -397,6 +397,9 @@ fn discovered_candidates(install: &Install, master: &Archive, critter: &Archive)
 /// test lists all 31 by name, so a candidate that disappears, appears or is
 /// renamed fails (guide: Exact assertions, "A set of named cases is compared as
 /// a set").
+///
+/// oracle: class 3 (known plaintext: the loose file on disk, matched on path
+/// and on size)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_candidate_discovery_lists_all_thirty_one_names() {
@@ -427,6 +430,41 @@ fn dat_028_candidate_discovery_lists_all_thirty_one_names() {
 /// The expected bytes are the file on disk in the patch folder. A decoder that
 /// produced the declared size for every input, or that got the ring wrong, fails
 /// here on the first differing byte with the pair's name in the message.
+///
+/// LZSS-001, LZSS-002 and LZSS-003: the ring is 4096 bytes, prefilled with
+/// `0x20` in slots 0..=4077 and `0x00` in slots 4078..=4095, and the write head
+/// starts at 4078. A wrong ring size, a wrong prefill or a wrong write head
+/// changes the decoded bytes of the corpus.
+///
+/// LZSS-005, LZSS-006 and LZSS-007: a control byte carries eight tokens bit 0
+/// first, a set bit is a literal and a clear bit is a two-byte back reference.
+/// A decoder that read the tokens in the other order, or took the wrong branch,
+/// produces different bytes.
+///
+/// LZSS-008, LZSS-009 and LZSS-010: the source index is an absolute ring
+/// position, not a distance, the length is the other three bits, and the output
+/// position maps to the ring slot at `(p + 4078) mod 4096`. A distance based
+/// copy, or a slot off by the write head, produces different bytes.
+///
+/// LZSS-011: a copy reads each byte before it writes it and wraps at 4096, so an
+/// overlapping run replicates its own output.
+///
+/// LZSS-012: no ring index above 4095 is addressable.
+///
+/// LZSS-016: every LZSS block inside a chain starts with a fresh ring buffer.
+/// These candidates are chain entries, so a decoder that carried state across a
+/// block boundary produces different bytes.
+///
+/// LZSS-017, LZSS-018 and LZSS-019: the three worked vectors. The corpus
+/// contains the tokens they name, so the decoder that reproduces the corpus
+/// byte for byte reproduces them.
+///
+/// The witness is joint: one byte-for-byte comparison over 28 real archive
+/// entries constrains the rules above together. It is a class 3 oracle, known
+/// plaintext, and it is a class 1, 2 or 3 witness for every rule it carries.
+///
+/// oracle: class 3 (known plaintext: the loose file on disk)
+/// claim: DAT-029, LZSS-001, LZSS-002, LZSS-003, LZSS-005, LZSS-006, LZSS-007, LZSS-008, LZSS-009, LZSS-010, LZSS-011, LZSS-012, LZSS-016, LZSS-017, LZSS-018, LZSS-019
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte() {
@@ -468,6 +506,8 @@ fn dat_029_twenty_eight_candidates_match_the_archive_byte_for_byte() {
 /// DAT-028 UNVERIFIED and says the spec author did not verify them. So this test
 /// asserts the guide's numbers and labels them as the guide's, rather than
 /// pretending to have measured them.
+///
+/// oracle: class 3 (known plaintext: the patched loose file on disk)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_three_patched_copies_differ_at_their_first_byte() {
@@ -517,6 +557,8 @@ fn dat_028_three_patched_copies_differ_at_their_first_byte() {
 /// test pins: the 31 candidates are the files that match on path *and* size,
 /// so the three that match on path alone are named here with the exact byte
 /// difference that excluded them.
+///
+/// oracle: class 3 (known plaintext: the excluded loose file on disk)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_three_loose_files_differ_in_size_and_are_excluded() {
@@ -556,6 +598,9 @@ fn dat_028_three_loose_files_differ_in_size_and_are_excluded() {
 /// 31 names DAT-028's first test pins is exactly the union of these two
 /// buckets, so a candidate that is neither exact nor patched, or one that is
 /// both, fails here.
+///
+/// oracle: class 3 (known plaintext: the loose file on disk, in exactly one
+/// bucket)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_every_candidate_is_accounted_for_in_exactly_one_bucket() {
@@ -606,6 +651,9 @@ fn dat_028_every_candidate_is_accounted_for_in_exactly_one_bucket() {
 ///
 /// This is the algebraic law under the two buckets above: a patched copy differs
 /// in bytes, never in length, which is why the size match finds all 31.
+///
+/// oracle: class 6 (algebraic law: a decoded entry produces exactly the size its
+/// record declares)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn every_candidate_decodes_to_its_declared_uncompressed_size() {

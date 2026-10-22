@@ -75,6 +75,20 @@ const CRITTER_DIRECTORIES: usize = 1;
 /// Every block header across both archives, one per directory (DAT-004).
 const CORPUS_BLOCK_HEADERS: usize = MASTER_DIRECTORIES + CRITTER_DIRECTORIES;
 
+/// MASTER.DAT block 0 header field 1, the capacity the spec names (DAT-007).
+const MASTER_BLOCK_0_CAPACITY: u32 = 22;
+
+/// MASTER.DAT block 0 header field 3, the dead pointer the spec names
+/// (DAT-007).
+const MASTER_BLOCK_0_DEAD_POINTER: u32 = 42_414_840;
+
+/// CRITTER.DAT block 0 header field 1, the capacity the spec names (DAT-007).
+const CRITTER_BLOCK_0_CAPACITY: u32 = 6142;
+
+/// CRITTER.DAT block 0 header field 3, the dead pointer the spec names
+/// (DAT-007).
+const CRITTER_BLOCK_0_DEAD_POINTER: u32 = 36_372_536;
+
 /// MASTER.DAT entry count (`DAT-C030`, DAT-025).
 const MASTER_ENTRIES: usize = 19_784;
 
@@ -677,7 +691,23 @@ fn declared_size(path: &str, master: &DatArchive, critter: &DatArchive) -> u32 {
 // --- DAT-025: the corpus the whole layer hangs from --------------------------
 
 /// DAT-025: both archives parse, and their directory and entry counts are the
-/// measured ones. Oracle class 2, cross-checked against oracle class 4.
+/// measured ones.
+///
+/// DAT-001 and DAT-002: the root header is the 16 bytes of four big-endian u32
+/// the spec fixes, and its field 0 is the directory count of the file. The
+/// header is read here through `fo1_bigendian::BigEndian`, the asset layer, so
+/// the bytes that are read are the bytes on disk.
+///
+/// END-002 and END-035: the little-endian fold of the same four bytes. The
+/// asset layer folds the most significant byte first; the little-endian fold is
+/// the executable layer's, and it gives 1,090,519,040 for the directory count
+/// against the 65 the file holds. That fold is not measured here: this test
+/// pins the big-endian reading and the counts, and the fold itself is graded by
+/// `synthetic_endian.rs::synthetic_the_same_bytes_read_one_and_sixteen_million_by_the_two_layers`,
+/// which is a class 5 oracle. The two together are the joint witness.
+///
+/// oracle: class 2 (closure on real data: the counts of both archives) and class 4 (the reference walk's own counts)
+/// claim: DAT-025, DAT-001, DAT-002, END-002, END-035
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_025_directory_and_entry_counts_are_exact() {
@@ -773,7 +803,9 @@ fn dat_025_directory_and_entry_counts_are_exact() {
 }
 
 /// DAT-026 and DAT-013: payload mode counts are exact per archive and corpus
-/// wide, and the mode arithmetic closes. Oracle class 2.
+/// wide, and the mode arithmetic closes.
+///
+/// oracle: class 2 (closure on real data: the mode counts of both archives)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_026_payload_mode_counts_are_exact() {
@@ -856,7 +888,10 @@ fn dat_026_payload_mode_counts_are_exact() {
 ///
 /// Every stored entry carries a zero compressed size and every chain entry a
 /// nonzero one, and the count of each class is exact. This is an exhaustive
-/// invariant over all 25,243 entries, not a sample. Oracle class 2.
+/// invariant over all 25,243 entries, not a sample.
+///
+/// oracle: class 2 (closure on real data: the split over every entry of both
+/// archives)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_017_stored_and_chain_entries_split_on_their_compressed_size() {
@@ -919,9 +954,10 @@ fn dat_017_stored_and_chain_entries_split_on_their_compressed_size() {
 /// uncompressed size would reject all seven (`docs/spec/dat.md`, DAT-021).
 ///
 /// The corpus walk is the production parse; the seven entries are cross-checked
-/// against the independent reference walk (oracle class 4), so a parser that
-/// reported a wrong offset fails here instead of passing a self-consistent but
-/// wrong answer.
+/// against the independent reference walk, so a parser that reported a wrong
+/// offset fails here instead of passing a self-consistent but wrong answer.
+///
+/// oracle: class 4 (the reference walk's own stored extents)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_021_the_stored_extent_is_bounded_by_the_compressed_size() {
@@ -1020,8 +1056,17 @@ fn dat_021_the_stored_extent_is_bounded_by_the_compressed_size() {
 /// compressed size exactly, and the block census is the measured one.
 ///
 /// The walk is header arithmetic only, so this half of the closure is
-/// established by structure and cannot be graded with the codec (oracle class 2,
-/// worked by oracle class 4).
+/// established by structure and cannot be graded with the codec.
+///
+/// DAT-016: mode `0x40` is a block chain. Every chain of the corpus is walked
+/// here as a chain of framed blocks.
+///
+/// DAT-008: nothing separates the blocks. The block headers of a chain account
+/// for its compressed size exactly, with no gap between one header and the
+/// next.
+///
+/// oracle: class 2 (closure on real data: the block headers of every chain) and class 4 (the reference walk's own block framing)
+/// claim: DAT-022, DAT-020, DAT-016, DAT-008
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_022_every_block_chain_consumes_exactly_its_compressed_size() {
@@ -1120,8 +1165,18 @@ fn dat_022_every_block_chain_consumes_exactly_its_compressed_size() {
 /// DAT-020: the `ChainStats` the production decoder reports, aggregated over all
 /// 20,456 chains, equal the framing census.
 ///
+/// DAT-018: a block chain is a series of framed blocks. The census is the
+/// framing of every chain of the corpus, so a chain that was not framed, or was
+/// framed differently, shows up as a different total.
+///
 /// Two independent passes have to agree: the test author's header walk and the
-/// production chain driver. Oracle class 2, cross-checked with class 4.
+/// production chain driver.
+///
+/// DAT-027: the framing constants. The raw bit is `0x8000` and the length
+/// ceiling is `0x7FFF`; every framed block in the corpus is read under them.
+///
+/// oracle: class 2 (closure on real data: the framing census over the corpus) and class 4 (the reference walk's own framing)
+/// claim: DAT-020, DAT-018, DAT-027
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_020_chain_stats_totals_equal_the_framing_census() {
@@ -1209,6 +1264,39 @@ fn dat_020_chain_stats_totals_equal_the_framing_census() {
 /// sizes, for 918,257,056 bytes over all 25,243 entries. All three totals are
 /// asserted here, so a decoder that produced a different number of bytes while
 /// still producing the right length for every entry fails.
+///
+/// DAT-009: an entry is a length byte, the name, and four u32 values. Every one
+/// of the 25,243 entries of both archives is walked through that record.
+///
+/// DAT-015: mode `0x20` is stored bytes whose length is the uncompressed size.
+/// The stored entries of the corpus are decoded to exactly their declared
+/// uncompressed size here.
+///
+/// DAT-019: every LZSS block inside a chain starts with a fresh ring buffer.
+/// State never crosses a block boundary, so a decoder that kept one ring across
+/// a whole chain produces wrong bytes and the sizes stop matching.
+///
+/// DAT-030: the Rust interface. This test drives the whole public surface of
+/// the archive crate over the real corpus: the tree, the entry records, the
+/// payload modes, the decoders and the error variants.
+///
+/// LZSS-013: stop when the block's input is used up, even in the middle of a
+/// control byte. Most blocks of the corpus end that way, and every one of them
+/// still produces its declared size.
+///
+/// LZSS-020: write index 4078 is the ruling. The corpus closure is the third
+/// of the three arguments the spec gives for it.
+///
+/// LZSS-022: full-corpus closure. 20,456 chains decoded with
+/// `produced == uncompressed_size` and `consumed == compressed_size`.
+///
+/// LZSS-023: the corpus's largest source index request. The corpus reaches the
+/// top of the addressable ring and never asks past it, so the bound is measured
+/// and not merely theoretical.
+///
+/// oracle: class 2 (closure on real data: every entry of both archives decodes
+/// to its declared uncompressed size)
+/// claim: DAT-023, DAT-024, LZSS-014, DAT-009, DAT-015, DAT-019, DAT-030, LZSS-013, LZSS-020, LZSS-022, LZSS-023
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_023_every_entry_decodes_to_its_declared_uncompressed_size() {
@@ -1283,7 +1371,20 @@ fn dat_023_every_entry_decodes_to_its_declared_uncompressed_size() {
 ///
 /// The fields are read straight out of the bytes at the offsets the reference
 /// walker reports, so this measures the file rather than restating the parser's
-/// own view (oracle class 2, offsets from class 4).
+/// own view.
+///
+/// DAT-004: one 16 byte block header per directory, in the same order as the
+/// names. The walk reads one header per directory of both archives and counts
+/// them, so a header that was missing, duplicated or out of order fails.
+///
+/// DAT-007: the block level field 1 and field 3 are read and discarded, exactly
+/// as at the root. The values are large and non-monotonic, and the spec names
+/// them for block 0 of each archive. The reference walker reads no field 1 and
+/// no field 3, so the values are the spec's own numbers and the closure over
+/// all 66 headers is what pins them to the file.
+///
+/// oracle: class 2 (closure on real data: every block header of both archives) and class 4 (the reference walk's own block header offsets) and class 5 (the field 1 and field 3 values the spec names)
+/// claim: DAT-005, DAT-006, DAT-004, DAT-007
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen() {
@@ -1313,6 +1414,32 @@ fn dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen() {
 
             let field0 = be_u32(raw);
             let field2 = be_u32(present(raw.get(8..12), "a block header needs twelve bytes"));
+            let field1 = be_u32(present(raw.get(4..8), "a block header needs eight bytes"));
+            let field3 = be_u32(present(
+                raw.get(12..16),
+                "a block header needs sixteen bytes",
+            ));
+
+            // DAT-007: fields 1 and 3 are a capacity and a dead pointer at the
+            // blocks too. The spec names the values for block 0 of each archive,
+            // and they are large, non-monotonic and unrelated to any extent.
+            if directory.index == 0 {
+                let (capacity, dead_pointer) = if is_master {
+                    (MASTER_BLOCK_0_CAPACITY, MASTER_BLOCK_0_DEAD_POINTER)
+                } else {
+                    (CRITTER_BLOCK_0_CAPACITY, CRITTER_BLOCK_0_DEAD_POINTER)
+                };
+                assert_eq!(
+                    field1, capacity,
+                    "{} block 0: field 1 is the capacity the spec names",
+                    archive.origin
+                );
+                assert_eq!(
+                    field3, dead_pointer,
+                    "{} block 0: field 3 is the dead pointer the spec names",
+                    archive.origin
+                );
+            }
 
             assert_eq!(
                 as_usize(field0, "a block field 0"),
@@ -1365,6 +1492,8 @@ fn dat_005_block_field_zero_is_the_entry_count_and_field_two_is_sixteen() {
 /// names; CRITTER.DAT's only block is named `ART\CRITTERS` and all 5,459 of its
 /// entries keep the prefix. A rule keyed on block index would strip the prefix
 /// from every CRITTER path, which is the disproof DAT-011 records.
+///
+/// oracle: class 2 (closure on real data: the composed paths of both archives)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_011_path_composition_keys_on_the_directory_name() {
@@ -1436,6 +1565,13 @@ fn dat_011_path_composition_keys_on_the_directory_name() {
 /// palette size the guide states from a completely different direction
 /// (DAT-029). Its offset of 211,060,669 is the proof that tree order is not
 /// physical order (DAT-012).
+///
+/// DAT-003: the directory names follow the root header, each one length
+/// prefixed, in file order. The lookup walks that name list to reach the entry
+/// it returns.
+///
+/// oracle: class 2 (closure on real data: the measured lookups of both archives)
+/// claim: DAT-029, DAT-012, DAT-010, DAT-003
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_029_real_lookups_return_the_measured_entries() {
@@ -1506,9 +1642,7 @@ fn dat_029_real_lookups_return_the_measured_entries() {
 /// that grew, shrank or carried the wrong sign fails.
 ///
 /// claim: DAT-028
-/// oracle: class 2 (closure on real data: the loose file and the archive entry
-/// are read from the install) and class 5 (the exact byte differences the
-/// guide's "Archive gate" section writes down)
+/// oracle: class 2 (closure on real data: the loose file and the archive entry are read from the install) and class 5 (the exact byte differences the guide's "Archive gate" section writes down)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn dat_028_the_three_loose_size_exclusions_are_exact() {
@@ -1541,9 +1675,12 @@ fn dat_028_the_three_loose_size_exclusions_are_exact() {
 /// each return an error.
 ///
 /// The block is real: `FONT0.AAF`'s single LZSS block, 2,314 compressed input
-/// bytes producing 6,337 (oracle class 5, written out in `docs/spec/lzss.md`).
-/// The production decoder is graded against `fo1_tests::RefLzss`, the
-/// independent reference decoder (oracle class 4), on the exact input first.
+/// bytes producing 6,337, which `docs/spec/lzss.md` writes out. The production
+/// decoder is graded against `fo1_tests::RefLzss`, the independent reference
+/// decoder, on the exact input first.
+///
+/// oracle: class 5 (hand computed vector: the block and the sizes the guide's "Archive gate" section writes out) and class 4 (the independent reference decoder)
+/// claim: LZSS-013, LZSS-014
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn lzss_014_a_stream_one_byte_short_and_one_byte_long_both_fail() {
@@ -1650,7 +1787,8 @@ fn lzss_014_a_stream_one_byte_short_and_one_byte_long_both_fail() {
 }
 
 /// DAT-025 and the guide's Fixtures section: the install fingerprint is exact.
-/// Oracle class 2.
+///
+/// oracle: class 2 (closure on real data: the install's own sizes and digest)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn the_install_fingerprint_is_exact() {
@@ -1734,6 +1872,9 @@ fn the_install_fingerprint_is_exact() {
 /// It is not game data and it is not committed; it exists so that a harness
 /// which stopped checking would fail here (guide: Fixtures and golden files,
 /// "unsupported install").
+///
+/// oracle: class 2 (closure on real data: the reference install's own
+/// executable digest is what the scratch install fails to match)
 #[test]
 #[ignore = "needs FO1_DATA"]
 fn the_harness_rejects_a_foreign_install() {

@@ -424,7 +424,18 @@ length or a block count. It also confirms the entry is a chain
 
 ### DAT-030 — The Rust interface
 
-`CONFIRMED AGAINST ORIGINAL BINARY`
+`UNVERIFIED`
+
+This is the conservative tag, and it replaces the `CONFIRMED AGAINST ORIGINAL
+BINARY` this claim carried before. The claim is an interface: a set of Rust
+types, signatures and error variants. An interface is a decision this port
+makes, and the guide settles none of it — the subsection below says so in the
+spec's own words. No Community Edition source was opened for this spec either,
+so the other conservative tag, `CONFIRMED IN COMMUNITY EDITION ONLY`, cannot
+apply: there is no source of any kind behind this claim but the decision
+itself. The facts the interface encodes — the header layout, the field order,
+the counts, the mode nibbles — are measured, and they live under DAT-001 to
+DAT-029. What is unverified here is the shape that carries them.
 
 ```rust
 //! DAT archive container.
@@ -437,23 +448,53 @@ length or a block count. It also confirms the entry is a chain
 /// Everything the reader can fail at. There is no panic path.
 pub enum DatError {
     /// The declared structure ran out before the reader did.
-    Truncated { at: u64 },
-    /// A length or count field exceeded the bytes actually present.
-    LengthOutOfRange { at: u64 },
+    Truncated {
+        /// File-relative byte offset at which the failed read started, never the
+        /// offset at which the failure was noticed.
+        at: u64,
+    },
+    /// A length or count field exceeded the bytes actually present, or a stored
+    /// name was not the UTF-8 the path type requires.
+    LengthOutOfRange {
+        /// File-relative byte offset at which the failed read started: the
+        /// length byte, or the name's bytes, that asked for what was not there.
+        at: u64,
+    },
     /// A block header or payload ran outside the archive.
-    OutOfBounds { at: u64 },
+    OutOfBounds {
+        /// File-relative byte offset the refusal names: the region's end, or
+        /// the framed block's header start for a block inside a chain.
+        at: u64,
+    },
     /// An offset plus a length did not fit in the address arithmetic.
     OffsetOverflow,
     /// A flags high nibble this build does not know.
-    UnknownPayloadMode { flags: u32 },
+    UnknownPayloadMode {
+        /// The flags word exactly as stored, reported back whole.
+        flags: u32,
+    },
     /// The tokens would have written more than the declared output size.
-    OutputOverrun { declared: u32 },
+    OutputOverrun {
+        /// The declared uncompressed size that was exceeded.
+        declared: u32,
+    },
     /// The stream ended before reaching the declared output size.
-    OutputShort { declared: u32 },
+    OutputShort {
+        /// The declared uncompressed size that was not reached.
+        declared: u32,
+    },
     /// The payload did not consume exactly the declared compressed size.
-    ConsumptionMismatch { declared: u32, actual: u32 },
+    ConsumptionMismatch {
+        /// The compressed size the entry declares.
+        declared: u32,
+        /// The bytes the payload actually consumed.
+        actual: u32,
+    },
     /// A block header declared a zero length payload.
-    EmptyBlock { at: u64 },
+    EmptyBlock {
+        /// File-relative byte offset of the block header.
+        at: u64,
+    },
 }
 
 /// One directory of the two level tree.
@@ -491,11 +532,13 @@ pub struct ChainStats {
 }
 
 pub struct DatArchive {
+    /// Diagnostic label the archive was parsed under (DAT-030). It names which
+    /// archive a message came from and is never a path to open.
+    origin: &'static str,
+    /// Directories in file order, one per block header.
     directories: Vec<DirectoryRecord>,
+    /// Entries in tree order: all of block 0, then all of block 1, and so on.
     entries: Vec<EntryRecord>,
-    /// Uppercased composed path to position in `entries`. Empty until first
-    /// lookup, because most callers only iterate.
-    index: std::cell::OnceCell<std::collections::HashMap<String, usize>>,
 }
 
 impl DatArchive {
@@ -503,6 +546,9 @@ impl DatArchive {
     /// entries. Parsing never reads the payload region, so a truncated payload
     /// does not stop the directory from being listed.
     pub fn parse(bytes: &[u8], origin: &'static str) -> Result<Self, DatError>;
+
+    /// The diagnostic label this archive was parsed under (DAT-030).
+    pub fn origin(&self) -> &'static str;
 
     /// Directory names in file order.
     pub fn directories(&self) -> &[DirectoryRecord];
@@ -519,8 +565,16 @@ impl DatArchive {
     pub fn find(&self, upper_path: &str) -> Option<&EntryRecord>;
 }
 
-/// The high nibble of the flags. A flags value of 0 means 0x10; any other
-/// unknown nibble is an error rather than a default.
+/// The high nibble of the flags. A flags value of 0 means 0x10. Any other
+/// unknown nibble has no mode, and the error is raised where it can be
+/// observed: `decode_entry` and `decode_entry_with_stats` answer
+/// `DatError::UnknownPayloadMode` for every nibble this function cannot map.
+/// The signature returns a `PayloadMode` and cannot carry an error, so this
+/// function is total: a nibble it cannot map yields `PayloadMode::BlockChain`
+/// as a placeholder. `PayloadMode` has no unknown variant, so the placeholder
+/// names a real mode and must not be read as one. The mode of a flags word
+/// this build does not know is `DatError::UnknownPayloadMode`, raised by the
+/// two decode functions.
 pub fn payload_mode(flags: u32) -> PayloadMode;
 
 /// Decodes one entry to exactly its declared uncompressed size, consuming
@@ -542,7 +596,14 @@ says what it is for. The crate has no I/O, so the reading that fits is a label
 carried on the archive for diagnostics — which archive a message came from — and
 never a path to open. It is a `&'static str` because the two archives are named
 once. This is an interface decision, recorded so the implementer does not invent
-a second meaning for it.
+a second meaning for it. The archive reports the label back through
+`origin()`, so a caller that holds an archive can say which archive a refusal
+came from without holding the label itself.
+
+The lookup index is an internal choice and is deliberately not part of the
+required interface above. A reader that wants one may build it once; a reader
+that only iterates need not build one at all, and nothing in the spec
+constrains the choice beyond correctness.
 
 `ChainStats` is required by the interface but no required function returns it. The
 smallest way to make it reachable is the extra `decode_entry_with_stats` above;
@@ -598,6 +659,68 @@ pub fn compose_path(directory: &str, name: &str) -> String {
 `compose_path` is a demonstration of the rule, not an extra required signature.
 A reader that needs a lookup table will want the index built once; that is an
 internal choice and the spec does not constrain it beyond correctness.
+
+### The byte offset an error carries
+
+Four of the nine variants carry an `at`, and **they do not all carry the same
+thing**. The rule the layer below settles — "the byte offset at which the
+failed operation started", `docs/spec/endian.md` END-022 — holds for the two
+variants that name a *field*. It does not hold for the two that name a
+*region*, so no one sentence covers all four. Each variant's own rule is stated
+here, with the formula its path uses.
+
+| Variant | What `at` names | The formula the path uses |
+| --- | --- | --- |
+| `Truncated` | The byte offset at which the failed read **started**, never the offset at which the failure was noticed. | A tree read: the cursor offset when the read began, which is the field's first byte, copied unchanged from the endian layer. An LZSS stream: `base + ip` — the entry's payload base plus the codec's position inside the stream. |
+| `LengthOutOfRange` | The byte offset at which the failed read **started**. | A name whose bytes are absent: the offset at which the name's bytes should have started, one past the length byte, copied unchanged from the endian layer. A name that is not UTF-8: the offset of its length byte, the length field that asked for the unusable bytes. An uncompressed size that does not fit a `usize`: the payload region's start, `entry.offset`. |
+| `OutOfBounds` | **Not** the start of the failed operation. | The region helper: the region's **end**, the first byte past the archive. The chain decoder: the framed block's **header start**, `chain start + cursor`. |
+| `EmptyBlock` | The framed block's **header start**. | `chain start + cursor`. |
+
+`OffsetOverflow` carries no offset because there is none to carry: no field and
+no region failed, the arithmetic did.
+
+The guide's rule is that "variants carry the byte offset and the field name".
+An offset and a field name together identify one field, so for the two
+variants that name a field the offset is that field's first byte and nothing
+else. The layer below says the same thing in its own words: `docs/spec/endian.md`
+END-022 fixes the endian layer's error as carrying "the byte offset at which
+the failed operation started", and on the tree read path the DAT reader copies
+that offset unchanged rather than recomputing one.
+
+The two readings are one byte apart whenever a field is missing its second
+byte, so the difference is not academic. Worked example, from DAT-001: the root
+header is four big endian u32 at `0x00..0x10`, so field 2 starts at `0x08`. A
+ten byte tree leaves two of the four bytes field 2 needs. The error is
+`DatError::Truncated { at: 8 }`, because the field that could not be read
+starts at 8. The reader notices that it has run out at byte 10, and 10 is
+**not** what the error carries: byte 10 is inside field 2 rather than at the
+start of it, and it identifies no field and no region of its own.
+
+Two paths do not copy an offset unchanged, and the table above gives both their
+formulas. The LZSS path adds the codec's position to a base; the chain path
+adds the block's position within the chain to the chain's own base.
+
+#### What the gate pins, and what it does not
+
+| The offset | Pinned by |
+| --- | --- |
+| `Truncated` at a tree field's first byte (8, and 12 for the next field) | `synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at` |
+| `LengthOutOfRange` at a name's first byte (17) | the same test |
+| `LengthOutOfRange` at a name's length byte | the same test |
+| `Truncated` at `base + ip` for a whole LZSS stream | the same test |
+| `OutOfBounds` at a region's end | `synthetic_a_stored_region_is_bounded_by_the_compressed_size_not_the_uncompressed_one` |
+| `EmptyBlock` at `chain start + cursor` | `synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at` |
+| `OutOfBounds` at `chain start + cursor` | the same test |
+
+One offset is not pinned, and the reason is an open item rather than a gap in
+the gate: an LZSS block **inside a chain** reports `chain start + ip`, where
+`ip` is counted from the start of the **block's** payload. The sum is
+therefore short of the file-relative offset of the byte by the block's own two
+byte frame header and by whatever blocks came before it. A chain whose stored
+bytes start at byte 60 and whose first block's back reference is cut reports
+byte 61, while the byte it names is at byte 63. A whole LZSS stream has no
+such gap, because its base is the start of the payload the codec is reading.
+See section 3.
 
 ### DAT-031 — The caller uppercases the path; `find` folds nothing
 
@@ -674,6 +797,92 @@ accepts it and the behaviour is an open item, not a rule. See section 3.
 
 ---
 
+## Error text
+
+The wording of a refusal is ours to choose, not a fact about the game, so this
+section fixes it and `crates/fo1-dat` renders what is written here. Every
+message names the quantity the refusal is about — the byte offset of the region
+that ran out, the flags word, the declared size — so a reader can tell which
+part of the archive failed, and no message carries a byte of the archive.
+
+The guide's rule is that a variant carries "the byte offset and the field
+name". This error type carries the offset in the payload, and it names the
+field in the message instead: the table below says what each message must
+name, and the gate asserts the text of every variant word for word.
+
+```rust
+impl core::fmt::Display for DatError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match *self {
+            Self::Truncated { at } => {
+                write!(f, "fo1-dat: the archive ran out at byte {at}")
+            }
+            Self::LengthOutOfRange { at } => {
+                write!(
+                    f,
+                    "fo1-dat: a length field at byte {at} exceeded the bytes present"
+                )
+            }
+            Self::OutOfBounds { at } => {
+                write!(f, "fo1-dat: a region at byte {at} ran outside the archive")
+            }
+            Self::OffsetOverflow => write!(f, "fo1-dat: an offset plus a length overflowed"),
+            Self::UnknownPayloadMode { flags } => {
+                write!(
+                    f,
+                    "fo1-dat: the flags word {flags:#04X} names no known payload mode"
+                )
+            }
+            Self::OutputOverrun { declared } => {
+                write!(
+                    f,
+                    "fo1-dat: the tokens would write past {declared} declared bytes"
+                )
+            }
+            Self::OutputShort { declared } => {
+                write!(
+                    f,
+                    "fo1-dat: the stream ended short of {declared} declared bytes"
+                )
+            }
+            Self::ConsumptionMismatch { declared, actual } => {
+                write!(
+                    f,
+                    "fo1-dat: the payload consumed {actual} byte(s) against {declared} declared"
+                )
+            }
+            Self::EmptyBlock { at } => {
+                write!(
+                    f,
+                    "fo1-dat: the block header at byte {at} declares a zero length payload"
+                )
+            }
+        }
+    }
+}
+```
+
+| Variant | Exact text | What the message must name |
+| --- | --- | --- |
+| `Truncated` | `fo1-dat: the archive ran out at byte {at}` | The byte offset at which the failed read started: the field that could not be read, or, for a whole LZSS stream, the entry's payload base plus the codec's position inside it. |
+| `LengthOutOfRange` | `fo1-dat: a length field at byte {at} exceeded the bytes present` | The byte offset at which the failed read started: the length byte, or the name's bytes, that asked for more bytes than were present. |
+| `OutOfBounds` | `fo1-dat: a region at byte {at} ran outside the archive` | The byte offset of the region that ran outside the archive: the region's end, or the framed block's header start for a block inside a chain. |
+| `OffsetOverflow` | `fo1-dat: an offset plus a length overflowed` | Nothing but the overflow itself. There is no offset to name: no field and no region failed, the arithmetic did. |
+| `UnknownPayloadMode` | `fo1-dat: the flags word {flags:#04X} names no known payload mode` | The flags word exactly as stored, in upper case hex with a `0x` prefix. |
+| `OutputOverrun` | `fo1-dat: the tokens would write past {declared} declared bytes` | The declared uncompressed size the tokens would have written past. |
+| `OutputShort` | `fo1-dat: the stream ended short of {declared} declared bytes` | The declared uncompressed size the stream never reached. |
+| `ConsumptionMismatch` | `fo1-dat: the payload consumed {actual} byte(s) against {declared} declared` | Both numbers: the bytes the payload actually consumed and the compressed size the entry declares. |
+| `EmptyBlock` | `fo1-dat: the block header at byte {at} declares a zero length payload` | The byte offset of the framed block's header start: the chain's payload base plus the block's position within it. |
+
+Worked example: a tree that runs out inside the root header's third field
+carries `at: 8`, and renders
+
+```
+fo1-dat: the archive ran out at byte 8
+```
+
+---
+
 ## 3. What this spec does NOT settle
 
 - **The LZSS codec.** Ring size, prefilled bytes, write index, token layout and
@@ -710,6 +919,25 @@ accepts it and the behaviour is an open item, not a rule. See section 3.
 - **Order of blocks within a chain.** Chains are read in stored order because
   that is the only order in which the output reaches the declared size. Nothing
   suggests a chain is reordered or seekable.
+- **Whether the field name belongs in the payload.** The guide says a variant
+  carries "the byte offset and the field name". `DatError` carries the offset in
+  the payload and names the field in the message, which the *Error text* section
+  fixes. The two carry the same fact in two places and the gate asserts the
+  message word for word, so a message that names the wrong field fails. Whether
+  the field name ought to be a payload field of its own is not settled here.
+- **Which byte an LZSS block inside a chain names.** The *byte offset an error
+  carries* section gives the formula the container uses: `chain start + ip`,
+  where `ip` is counted from the start of the **block's** payload while the base
+  is the **chain's** payload start. The sum is therefore short of the
+  file-relative offset of the byte by the block's two byte frame header and by
+  whatever blocks came before it: a chain whose stored bytes start at byte 60
+  and whose first block's back reference is cut reports byte 61, while the byte
+  it names is at byte 63. A whole LZSS stream has no such gap, because its
+  base is the start of the payload the codec is reading. Whether the chain path
+  should add the block's own start instead is not settled here, and no test
+  pins the chain path's number, so the behaviour can change without a gate
+  failing. The gate pins the stream path, where the number is the
+  file-relative offset of the byte.
 
 ---
 
@@ -745,3 +973,50 @@ document and is not amended here.
 
 The note exists so the disagreement is visible instead of silently resolved. A
 later reader who finds the checklist should not "fix" this spec to match it.
+
+### The crate's own field docs still read the offsets the other way
+
+`UNVERIFIED`
+
+The *byte offset an error carries* section of this spec fixes the `at` of
+`DatError::Truncated` as the byte offset at which the failed read **started**,
+never the offset at which the failure was noticed, and the interface block in
+DAT-030 now carries that wording on the field itself.
+
+`crates/fo1-dat` still carries the other wording on the same field: "File-
+relative byte offset at which the reader ran out." That is the notice reading,
+the reading this spec removed, and it is the wording the crate's own doc
+comment teaches a reader of the crate rather than of this spec. The two other
+fields that carry an offset are looser in the same way: `LengthOutOfRange` says
+"of the length byte or field" without saying which of the two it is, and
+`OutOfBounds` says "of the region that ran out", which is the region's end on
+one path and nothing at all on the chain path.
+
+The three disagree with the spec about the same fields, so the disagreement is
+recorded here rather than resolved by editing either side. The crate's
+behaviour already matches this spec — the gate pins the value the container
+actually produces (`at: 8` for a root header whose third u32 is cut in half,
+and that value is the start offset) — so only the doc comments differ.
+Bringing the comments into line is a change to `crates/fo1-dat`, which this
+spec does not own.
+
+### The crate's own `payload_mode` doc denies a mode the type has
+
+`UNVERIFIED`
+
+The DAT-030 interface block in this spec now says what the function does: the
+signature cannot carry an error, so the function is total, and a nibble it
+cannot map yields `PayloadMode::BlockChain` as a placeholder. `PayloadMode`
+has no unknown variant, and `BlockChain` is a real mode — it is what a chain
+entry decodes as.
+
+`crates/fo1-dat` says the same thing but calls the placeholder "a placeholder
+that names no real mode", which denies a mode the type has. That is the same
+claim this spec removed: a reader who believes it looks for an unknown variant
+that does not exist.
+
+The crate's behaviour is already the one the spec states — `payload_mode`
+returns `BlockChain` for a nibble it cannot map, and the refusal is
+`DatError::UnknownPayloadMode`, raised by the two decode functions — so only
+the comment differs. Bringing it into line is a change to `crates/fo1-dat`,
+which this spec does not own.

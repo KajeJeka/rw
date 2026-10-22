@@ -43,8 +43,9 @@ mod ref_lzss;
 mod sha256;
 
 pub use harness::{
-    describe, hex_of, install_root_from_env, Fingerprint, HarnessError, Install,
-    CRITTER_DAT_FILE_NAME, ENV_INSTALL_ROOT, EXE_FILE_NAME, LOOSE_DATA_DIR_NAME,
+    describe, hex_of, holdout_manifest_path, holdout_root, install_root_from_env, Fingerprint,
+    HarnessError, Install, CRITTER_DAT_FILE_NAME, ENV_INSTALL_ROOT, ENV_REFERENCE_ROOT,
+    EXE_FILE_NAME, HOLDOUT_FOLDER_NAME, HOLDOUT_MANIFEST_NAME, LOOSE_DATA_DIR_NAME,
     MASTER_DAT_FILE_NAME, REFERENCE_CRITTER_DAT_BYTES, REFERENCE_EXE_SHA256,
     REFERENCE_MASTER_DAT_BYTES,
 };
