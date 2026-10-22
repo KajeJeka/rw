@@ -51,9 +51,19 @@
 //! part's scope instead of a case name, in the same form (HOLD-027):
 //!
 //! ```text
-//! holdout exe: FAILED install: references directory not set
+//! holdout exe: FAILED install: reference install missing or unreachable
 //! holdout exe: 0 cases, 0 passed
 //! ```
+//!
+//! The scope of that line is `install`, and its reason is a token of its own:
+//! `references directory not set` belongs to the scope `set` and names
+//! `FO1_REF` being unset, and a missing install is a different failure. The
+//! vocabulary block of HOLD-027 names the scope `install` but carries no
+//! token for it, so the specification needs one: this file uses
+//! `reference install missing or unreachable`, which is the token HOLD-026
+//! and HOLD-027 state in words ("the reference install is missing or
+//! unreachable"). The specification is its author's file and this one does
+//! not touch it.
 //!
 //! A failing line never prints the expected bytes, the expected digest or any
 //! part of the archive: the implementer learns which case failed and what kind
@@ -109,7 +119,21 @@ const REASON_MANIFEST_VERSION: &str = "manifest version not understood";
 /// `manifest count mismatch` (HOLD-027).
 const REASON_MANIFEST_COUNT: &str = "manifest count mismatch";
 /// `references directory not set` (HOLD-027).
+///
+/// The scope of this token is `set`: it names `FO1_REF` being unset, so the
+/// hold-out folder cannot be located.
 const REASON_REFERENCES_NOT_SET: &str = "references directory not set";
+/// `reference install missing or unreachable`.
+///
+/// The scope of this token is `install`: it names the reference install being
+/// missing or unreachable, which is the failure HOLD-026 gives its own row
+/// and HOLD-027 gives its own scope.
+///
+/// The vocabulary block of HOLD-027 does not carry a token for the install
+/// scope yet, and the specification is its author's file: the token this
+/// constant holds is the one the specification needs to add, and it is the
+/// wording HOLD-026 and HOLD-027 use for that failure.
+const REASON_INSTALL_MISSING: &str = "reference install missing or unreachable";
 /// `undeclared file in the vector folder` (HOLD-027).
 const REASON_UNDECLARED_FILE: &str = "undeclared file in the vector folder";
 /// `vector file missing` (HOLD-027).
@@ -1526,7 +1550,7 @@ fn holdout_exe_table_vectors_match_the_reference_executable_bytes() {
                 ),
                 _ => scope_failure(
                     SCOPE_INSTALL,
-                    REASON_REFERENCES_NOT_SET,
+                    REASON_INSTALL_MISSING,
                     format!("the reference install is missing or unreachable: {error}"),
                 ),
             };
@@ -1538,7 +1562,7 @@ fn holdout_exe_table_vectors_match_the_reference_executable_bytes() {
         Err(error) => {
             let failure = scope_failure(
                 SCOPE_INSTALL,
-                REASON_REFERENCES_NOT_SET,
+                REASON_INSTALL_MISSING,
                 format!("the reference install is missing or unreachable: {error}"),
             );
             fail_part("exe", &failure);
