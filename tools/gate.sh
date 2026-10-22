@@ -437,36 +437,36 @@ step_three() {
 # 7 count check
 # ---------------------------------------------------------------------------
 
-# expected_counts.toml is `key value`, one per line, and EVERY key in it is a
-# floor this step enforces. A key the script does not understand fails the
-# step: a floor nobody reads is a floor nobody keeps, and the guide says the
-# counts may only rise.
+# The check itself lives in tools/check_counts.sh, and this step CALLS it.
+# That script is the one the CI workflow runs for the same step, so there is
+# ONE implementation of the floors, the counting and the comparison, and CI
+# and the gate cannot drift apart. This step used to carry its own inline
+# copy of that check, and two copies of a check drift silently: the copy that
+# drifts is the copy nobody judges.
 #
-# The keys are four kinds:
-#   <gate file stem>   a floor on the number of #[test] functions in
-#                      tests/gates/<key>.rs
-#   min_synthetic_tests   the sum of the synthetic_* file counts
-#   min_install_tests     the sum of the install_* file counts
-#   min_harness_tests     the number of #[test] functions in crates/fo1-tests
+# The floors, the four kinds of key, the counting rule and the failures are
+# the script's, documented there. The script reads every key in
+# expected_counts.toml, measures the real counts against the HEAD tree,
+# prints the floor and the measurement for every key, and fails on a key it
+# does not understand, on a count below its floor and on a gate test file
+# that has no floor.
 #
-# The counts come from the HEAD tree, not from the working tree: the gate
-# judges the commit, and a dirty tree is the owner's business, not the floor's.
+# The report row is the row this step always wrote: the step name, the
+# outcome and the wording are unchanged. The row is therefore written here
+# and not by run_step, whose detail column says only "ok".
 #
-# The count of a file is the number of `#[test]` attribute lines in it. The
-# attribute has to start its own line, so a `#[test]` inside a comment or
-# inside a string is not a test. The floors in expected_counts.toml were
-# measured that way, and the count is the number of test functions, not the
-# number of times the word appears.
+# A MISSING expected_counts.toml is a FAIL, here and in the script alike. It
+# used to be a skip here, and a skip is a FAIL for the gate anyway (see the
+# header), so the gate's verdict for a missing floor file does not change.
+# What changes is that the gate says "fail" where it said "skipped", and it
+# says it for the script's reason: expected_counts.toml is a tracked file of
+# the commit, so a missing one is a defect in the commit and not a machine
+# that cannot run the check. Both now fail it, so the two give the same
+# verdict for the same tree, and the report can say that CI and the gate run
+# the same check.
 
-# The number of #[test] functions in one file of the HEAD tree.
-count_tests_in_head() {
-    # count_tests_in_head <path in HEAD>
-    local path="$1" n
-    n=$(git show "HEAD:$path" 2>/dev/null | grep -c '^[[:space:]]*#\[test\]' || true)
-    printf '%s' "${n:-0}"
-}
-
-# Does the HEAD tree hold this path?
+# Does the HEAD tree hold this path? Step 8 uses this to check the files an
+# exemption or a recorded mutation kill names.
 head_has_path() {
     git cat-file -e "HEAD:$1" 2>/dev/null
 }
@@ -474,138 +474,14 @@ head_has_path() {
 # Every step runs, whatever the earlier steps did: see the header.
 {
     printf '\n=== step 7/10: 7 count check ===\n'
-    if [ ! -f expected_counts.toml ]; then
-        skip_step 7 '7 count check' 'expected_counts.toml is missing'
+    COUNT_OUTPUT=$(bash tools/check_counts.sh 2>&1)
+    COUNT_STATUS=$?
+    printf '%s\n' "$COUNT_OUTPUT"
+    if [ "$COUNT_STATUS" -eq 0 ]; then
+        step '7 count check' pass 'every floor in expected_counts.toml is met'
     else
-        COUNT_FAIL=0
-        SYNTHETIC_COUNT=0
-        INSTALL_COUNT=0
-        HARNESS_COUNT=0
-        SYNTHETIC_FLOOR=''
-        INSTALL_FLOOR=''
-        HARNESS_FLOOR=''
-        NAMED_FILES=''
-
-        # `key value`, one per line. A line that is not that shape is a
-        # malformed floor, and a malformed floor fails the step.
-        COUNT_PAIRS=$(sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' expected_counts.toml |
-            awk '{ if (NF != 2 || $2 !~ /^[0-9]+$/) print $1 " MALFORMED"; else print $1 " " $2 }')
-
-        while IFS=' ' read -r key floor; do
-            [ -n "$key" ] || continue
-            if [ "$floor" = MALFORMED ]; then
-                printf 'FAIL the line for key %s is not `key <count>`\n' "$key"
-                COUNT_FAIL=1
-                continue
-            fi
-            case "$key" in
-                min_synthetic_tests)
-                    SYNTHETIC_FLOOR=$floor
-                    ;;
-                min_install_tests)
-                    INSTALL_FLOOR=$floor
-                    ;;
-                min_harness_tests)
-                    HARNESS_FLOOR=$floor
-                    ;;
-                *)
-                    path="tests/gates/$key.rs"
-                    if ! head_has_path "$path"; then
-                        printf 'FAIL %s names the gate test file %s, which is not in the HEAD tree\n' \
-                            "$key" "$path"
-                        COUNT_FAIL=1
-                        continue
-                    fi
-                    count=$(count_tests_in_head "$path")
-                    NAMED_FILES="$NAMED_FILES $path"
-                    case "$key" in
-                        synthetic_*) SYNTHETIC_COUNT=$((SYNTHETIC_COUNT + count)) ;;
-                        install_*) INSTALL_COUNT=$((INSTALL_COUNT + count)) ;;
-                    esac
-                    if [ "$count" -eq 0 ]; then
-                        printf 'FAIL %s has no test function, so the file proves nothing (floor %s)\n' \
-                            "$key" "$floor"
-                        COUNT_FAIL=1
-                    elif [ "$count" -lt "$floor" ]; then
-                        printf 'FAIL %s: floor %s, measured %s\n' "$key" "$floor" "$count"
-                        COUNT_FAIL=1
-                    else
-                        printf 'count  %-22s floor %-5s measured %s\n' "$key" "$floor" "$count"
-                    fi
-                    ;;
-            esac
-        done <<EOF
-$COUNT_PAIRS
-EOF
-
-        # The harness is the reference decoders, counted apart from the gate
-        # surface, and it is not a file under tests/gates/.
-        if [ -n "$HARNESS_FLOOR" ]; then
-            for hfile in $(git ls-tree -r --name-only HEAD crates/fo1-tests/src/ | grep '\.rs$'); do
-                n=$(count_tests_in_head "$hfile")
-                HARNESS_COUNT=$((HARNESS_COUNT + n))
-            done
-            if [ "$HARNESS_COUNT" -lt "$HARNESS_FLOOR" ]; then
-                printf 'FAIL min_harness_tests: floor %s, measured %s\n' \
-                    "$HARNESS_FLOOR" "$HARNESS_COUNT"
-                COUNT_FAIL=1
-            else
-                printf 'count  %-22s floor %-5s measured %s\n' \
-                    'min_harness_tests' "$HARNESS_FLOOR" "$HARNESS_COUNT"
-            fi
-        else
-            printf 'FAIL expected_counts.toml declares no min_harness_tests\n'
-            COUNT_FAIL=1
-        fi
-
-        if [ -n "$SYNTHETIC_FLOOR" ]; then
-            if [ "$SYNTHETIC_COUNT" -lt "$SYNTHETIC_FLOOR" ]; then
-                printf 'FAIL min_synthetic_tests: floor %s, measured %s\n' \
-                    "$SYNTHETIC_FLOOR" "$SYNTHETIC_COUNT"
-                COUNT_FAIL=1
-            else
-                printf 'count  %-22s floor %-5s measured %s\n' \
-                    'min_synthetic_tests' "$SYNTHETIC_FLOOR" "$SYNTHETIC_COUNT"
-            fi
-        else
-            printf 'FAIL expected_counts.toml declares no min_synthetic_tests\n'
-            COUNT_FAIL=1
-        fi
-
-        if [ -n "$INSTALL_FLOOR" ]; then
-            if [ "$INSTALL_COUNT" -lt "$INSTALL_FLOOR" ]; then
-                printf 'FAIL min_install_tests: floor %s, measured %s\n' \
-                    "$INSTALL_FLOOR" "$INSTALL_COUNT"
-                COUNT_FAIL=1
-            else
-                printf 'count  %-22s floor %-5s measured %s\n' \
-                    'min_install_tests' "$INSTALL_FLOOR" "$INSTALL_COUNT"
-            fi
-        else
-            printf 'FAIL expected_counts.toml declares no min_install_tests\n'
-            COUNT_FAIL=1
-        fi
-
-        # A gate test file with no floor is a file whose tests can vanish
-        # without the gate noticing, which is the hole this step exists to
-        # close. Every file under tests/gates/ must be named by a key.
-        for gfile in $(git ls-tree --name-only HEAD tests/gates/ | grep '\.rs$'); do
-            case " $NAMED_FILES " in
-                *" $gfile "*) ;;
-                *)
-                    printf 'FAIL no floor in expected_counts.toml names the gate test file %s\n' \
-                        "$gfile"
-                    COUNT_FAIL=1
-                    ;;
-            esac
-        done
-
-        if [ "$COUNT_FAIL" -ne 0 ]; then
-            step '7 count check' fail 'a floor in expected_counts.toml was not met'
-            note_failure '7 count check'
-        else
-            step '7 count check' pass 'every floor in expected_counts.toml is met'
-        fi
+        step '7 count check' fail 'a floor in expected_counts.toml was not met'
+        note_failure '7 count check'
     fi
 }
 
@@ -2845,6 +2721,8 @@ fi
     printf -- '- A skipped step is not a passed step. A run with any skip is a FAIL.\n'
     printf -- '- Every step ran. The gate does not stop at the first failure: it runs every\n'
     printf -- '  step and reports every verdict, so a run names every defect at once.\n'
+    printf -- '- Step 7 runs tools/check_counts.sh, the script the CI workflow runs for the\n'
+    printf -- '  same step, so CI and the gate run one count check and cannot drift apart.\n'
     [ -n "$SKIPPED_REQUIRED" ] &&
         printf -- '- Skipped:%s\n' "$SKIPPED_REQUIRED"
     [ -n "$FAILED_AT" ] &&
