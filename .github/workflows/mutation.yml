@@ -1,0 +1,199 @@
+# Weekly mutation testing.
+#
+# WHAT THIS IS
+#
+# tools/gate.sh step 10 runs cargo mutants over the five reader crates and
+# decides which surviving mutant is approved, by reading mutants-allow.md.
+# That decision rule is the gate's own: a survivor is admitted only when an
+# entry in mutants-allow.md names its crate, its file and line, and its exact
+# description, and a malformed entry fails the step.
+#
+# This workflow does NOT carry a second copy of that rule, which would drift
+# from the gate and would be looser or stricter than it by accident. It runs
+# the gate's own step 10 and reads the verdict the gate wrote for it. The
+# mutation scope is the one the gate uses: the five reader crates, the
+# synthetic suites, no game data and no private term list.
+#
+# THE SCOPE, AND WHY IT IS THE SCOPE
+#
+# The five reader crates are every workspace member outside the dev-only band,
+# which tools/layers.txt assigns. The dev-only band holds the reference
+# decoders and the gate test host: those are the proof, not the code being
+# proved, so mutating them would measure the proof.
+#
+# The install scope is not run here. It would add `--cargo-test-arg --ignored`
+# and about 60 minutes on top of the fast scope, and it needs the player's own
+# copy of the game, which this job must never hold.
+#
+# WHAT IT COSTS
+#
+# The mutation run is 374 mutants. The gate quotes 9.74 s per mutant for a run
+# of that size (tools/gate.sh), so a run of that size is about an hour, and the
+# owner's last measured run of this scope took 37 minutes (374 mutants: 333
+# caught, 15 missed, 26 unviable). The ceiling is set for the hour, because a
+# run that overruns proves nothing.
+#
+# One job is not a performance setting, it is what makes the survivor list a
+# measurement: cargo-mutants copies the workspace into a temporary directory and
+# every parallel worker shares the ONE target directory inside that copy, so a
+# worker can be graded against a binary built from a different mutation.
+#
+# With the toolchain, the two cargo subcommand installs (both compile from
+# source) and the gate's own other steps, the job needs about 80 minutes of a
+# 120 minute ceiling: roughly eighty CI minutes a week. It is a scheduled job,
+# so it never sits in a contributor's push path.
+#
+# WHEN IT MAY FAIL, AND WHEN IT IS NOT SKIPPED
+#
+# A scheduled workflow's failure does not block a merge, so a red weekly run is
+# a signal to the owner, not a gate. It may be allowed to fail while the
+# readers are under an approved refactor that changes the mutant set, and while
+# the pinned cargo-mutants release cannot be installed on the runner.
+#
+# This job is NOT skipped when the tree is not green. The gate runs every step
+# and reports every verdict: it does not stop at the first failure, so the
+# mutation step still runs on a red tree. The outcome is fail-safe, because a
+# broken suite catches fewer mutants, so more of them survive, so step 10
+# fails. What this job does not do is fail on a red tree for its own sake: the
+# verdict it reads is step 10's row and nothing else, so a clippy or a
+# documentation failure does not turn the weekly job red.
+#
+# NO SECRET, NO GAME DATA
+#
+# This job reads the repository and nothing else. It needs no secret, no
+# repository variable and no file from outside the checkout. It never sets
+# FO1_DATA and never fetches an archive.
+
+name: mutation
+
+# Quoted so that a YAML 1.1 parser, which reads a bare `on` as a boolean, sees the same
+# structure GitHub's parser sees.
+"on":
+  # Weekly, on Monday morning. The minute is off the hour on purpose: the
+  # scheduled runs are queued on GitHub's side and the ones on the hour are
+  # the busiest.
+  schedule:
+    - cron: "23 5 * * 1"
+  # Runnable by hand, for the owner, at any time.
+  workflow_dispatch:
+
+# Read-only. This workflow needs to clone and build. It does not need to write
+# anything back, open a pull request, publish a package, or read any secret.
+permissions:
+  contents: read
+
+# One run at a time. A mutation run that is cancelled halfway leaves no
+# measurement, so an in-flight run is never cancelled by a new one.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  mutation-synthetic:
+    name: Weekly mutation (synthetic scope)
+    # ubuntu-24.04 provides the shell and a working /usr/bin/bash, which is what
+    # tools/*.sh need. The scripts are invoked through `bash` explicitly rather
+    # than relying on the executable bit, because a checkout made on Windows does
+    # not reliably preserve it.
+    runs-on: ubuntu-24.04
+    # The mutation run alone is an hour by the per-mutant arithmetic and 37
+    # minutes measured, and the two cargo subcommand installs compile from
+    # source. The ceiling is generous because a timeout mid-run proves nothing.
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install the pinned toolchain
+        # The same toolchain the CI workflow and the gate use. A moving channel
+        # would change what the run proves without any change to the repository.
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup default 1.96.0
+
+      - name: Install cargo-deny
+        # The gate's step 3 runs `cargo deny check` and treats a missing
+        # cargo-deny as a skipped step. The version is the one the repository
+        # names, so this run is the gate's run.
+        run: cargo install cargo-deny --version 0.20.2 --locked
+
+      - name: Install cargo-mutants
+        # Pinned to the version the approved survivors were measured with. A
+        # newer cargo-mutants may name a different mutant set, and the survivor
+        # list would then disagree with mutants-allow.md for reasons that have
+        # nothing to do with the code.
+        run: cargo install cargo-mutants --version 27.1.0 --locked
+
+      - name: Run the gate with the mutation step enabled
+        id: gate
+        # The base ref is HEAD, so the two steps that compare against a base
+        # (1 protected paths, 8 fail before pass after) are vacuous here and the
+        # mutation step is the one that decides this job.
+        #
+        # The gate's own exit status is 1 in this job: steps 5 and 6 cannot run
+        # without the player's copy of the game, and the gate counts a skipped
+        # required step as a failure. The mutation step's own verdict is the row
+        # the gate writes for step 10, and that row decides this job.
+        run: |
+          # The log goes under target/, which .gitignore excludes. The gate
+          # refuses to run on a dirty tree, and a log file in the repository
+          # root is an untracked file, which is a dirty tree.
+          mkdir -p target
+          set +e
+          RW_MUTANTS=1 bash tools/gate.sh HEAD > target/mutation-run.log 2>&1
+          status=$?
+          set -e
+          printf 'gate.sh exit status: %s\n' "$status"
+          printf 'the gate counts the two install steps as skipped, which is a FAIL for the\n'
+          printf 'gate and not for this job; the mutation step decides this job\n'
+          tail -20 target/mutation-run.log
+
+      - name: Report the mutation counts and every survivor
+        # Always, so a reader of a red run still sees what was measured.
+        if: always()
+        run: |
+          printf '\n=== the mutation step: the counts ===\n'
+          if [ -f target/gate/mutants.log ]; then
+            grep -E '^[0-9]+ mutants tested' target/gate/mutants.log || true
+            printf 'the same count, read from the gate report:\n'
+            grep -E '^\| 10 \| 10 mutation testing \|' target/gate/report.md || true
+          else
+            printf 'no mutants log: the mutation step did not run\n'
+          fi
+          printf '\n=== the mutation step: every survivor ===\n'
+          if [ -f target/gate/survivors.txt ]; then
+            cat target/gate/survivors.txt
+          else
+            printf 'no survivor list: the mutation step did not run\n'
+          fi
+
+      - name: The mutation step's verdict
+        # The rule is the gate's: a survivor that mutants-allow.md does not
+        # approve fails the gate's step 10, and this job fails with it. A
+        # mutation step that did not run fails this job too, because a run that
+        # measured nothing proves nothing.
+        if: always()
+        run: |
+          row=$(grep -E '^\| 10 \| 10 mutation testing \|' target/gate/report.md || true)
+          if [ -z "$row" ]; then
+            printf 'FAIL the mutation step did not run, so nothing was proven\n'
+            exit 1
+          fi
+          printf '%s\n' "$row"
+          outcome=$(printf '%s\n' "$row" |
+            awk -F'|' '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4 }')
+          case "$outcome" in
+            pass)
+              printf 'the mutation step passed\n'
+              exit 0
+              ;;
+            skip)
+              printf 'FAIL the mutation step did not run: %s\n' "$row"
+              exit 1
+              ;;
+            *)
+              printf 'FAIL the mutation step did not pass: %s\n' "$row"
+              exit 1
+              ;;
+          esac

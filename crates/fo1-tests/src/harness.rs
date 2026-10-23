@@ -49,6 +49,19 @@ pub const CRITTER_DAT_FILE_NAME: &str = "CRITTER.DAT";
 /// Name of the loose patch folder inside the install.
 pub const LOOSE_DATA_DIR_NAME: &str = "DATA";
 
+/// Environment variable naming the private references directory.
+///
+/// The hold-out vectors live under it, outside the repository and outside the
+/// working tree, so no crate in this workspace can read them by accident
+/// (docs/spec/holdout.md, HOLD-001).
+pub const ENV_REFERENCE_ROOT: &str = "FO1_REF";
+
+/// Name of the hold-out vector folder inside the references directory.
+pub const HOLDOUT_FOLDER_NAME: &str = "holdout";
+
+/// Name of the hold-out manifest inside the hold-out folder.
+pub const HOLDOUT_MANIFEST_NAME: &str = "manifest.txt";
+
 /// Everything the harness can fail at.
 ///
 /// No variant carries file content: each reports a path, an offset or a length.
@@ -65,6 +78,21 @@ pub enum HarnessError {
     InstallRootNotADirectory {
         /// The value that was found.
         value: String,
+    },
+    /// The private references directory is not set in the environment.
+    ReferenceRootUnset {
+        /// The variable that was looked for.
+        variable: &'static str,
+    },
+    /// The hold-out vector folder does not exist.
+    MissingHoldoutFolder {
+        /// The path that was probed.
+        path: PathBuf,
+    },
+    /// The hold-out manifest does not exist inside the hold-out folder.
+    MissingHoldoutManifest {
+        /// The path that was probed.
+        path: PathBuf,
     },
     /// A file the harness needs is missing from the install.
     MissingFile {
@@ -132,6 +160,25 @@ impl core::fmt::Display for HarnessError {
             Self::InstallRootNotADirectory { value } => write!(
                 f,
                 "unsupported install: {ENV_INSTALL_ROOT}={value} is not a directory."
+            ),
+            Self::ReferenceRootUnset { variable } => write!(
+                f,
+                "the hold-out vectors are unreachable: {variable} is not set. Export it and \
+                 re-run, for example:\n  export {variable}='/path/to/private/references'\nThe \
+                 harness never guesses a references path: the hold-out set is the owner's \
+                 private folder and nothing in this repository can stand in for it."
+            ),
+            Self::MissingHoldoutFolder { path } => write!(
+                f,
+                "the hold-out vectors are unreachable: the hold-out folder {} does not exist. \
+                 The hold-out set is the owner's private folder; the repository holds no \
+                 vector data at all and cannot substitute for it.",
+                path.display()
+            ),
+            Self::MissingHoldoutManifest { path } => write!(
+                f,
+                "the hold-out vectors are unreachable: the manifest {} does not exist.",
+                path.display()
             ),
             Self::MissingFile { role, path } => {
                 write!(
@@ -382,6 +429,50 @@ pub fn install_root_from_env() -> Result<PathBuf, HarnessError> {
             variable: ENV_INSTALL_ROOT,
         }),
     }
+}
+
+/// The hold-out vector folder, `FO1_REF/holdout/`.
+///
+/// The hold-out set is the owner's private folder (docs/spec/holdout.md,
+/// HOLD-001). It is reached through this function and through no other route:
+/// the banned pattern rule forbids a read of the references directory outside
+/// the harness, so a gate test asks the harness where the folder is and never
+/// looks the variable up itself.
+///
+/// # Errors
+///
+/// [`HarnessError::ReferenceRootUnset`] when `FO1_REF` is absent or empty, and
+/// [`HarnessError::MissingHoldoutFolder`] when the folder does not exist.
+/// Neither is a skip: a missing hold-out set fails the gate loudly.
+pub fn holdout_root() -> Result<PathBuf, HarnessError> {
+    let reference = match std::env::var(ENV_REFERENCE_ROOT) {
+        Ok(value) if !value.is_empty() => PathBuf::from(value),
+        _ => {
+            return Err(HarnessError::ReferenceRootUnset {
+                variable: ENV_REFERENCE_ROOT,
+            })
+        }
+    };
+    let folder = reference.join(HOLDOUT_FOLDER_NAME);
+    if !folder.is_dir() {
+        return Err(HarnessError::MissingHoldoutFolder { path: folder });
+    }
+    Ok(folder)
+}
+
+/// The hold-out manifest, `FO1_REF/holdout/manifest.txt`.
+///
+/// # Errors
+///
+/// As [`holdout_root`], plus [`HarnessError::MissingHoldoutManifest`] when the
+/// manifest is not there.
+pub fn holdout_manifest_path() -> Result<PathBuf, HarnessError> {
+    let folder = holdout_root()?;
+    let manifest = folder.join(HOLDOUT_MANIFEST_NAME);
+    if !manifest.is_file() {
+        return Err(HarnessError::MissingHoldoutManifest { path: manifest });
+    }
+    Ok(manifest)
 }
 
 /// Fingerprints a file by hashing it and by measuring it.

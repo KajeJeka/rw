@@ -245,6 +245,47 @@ const LZSS_CUT_PAIR_PAYLOAD: [u8; 2] = [0x00, 0x00];
 /// and the second pair starts one byte before the input ends.
 const LZSS_FULL_THEN_CUT_PAIR_PAYLOAD: [u8; 4] = [0x00, 0x00, 0x0F, 0x00];
 
+// --- the offsets an error carries (DAT-030) ------------------------------------
+
+/// A byte that is not valid UTF-8, so a stored name that carries it cannot be
+/// decoded (DAT-009, DAT-030).
+const NOT_UTF8_BYTE: u8 = 0xFF;
+
+/// Frame header of a chain block that declares a zero length payload, which
+/// the reader refuses rather than spin on (DAT-018).
+const ZERO_PAYLOAD_BLOCK_HEADER: u16 = 0;
+
+/// Frame header of a chain block that declares five payload bytes the chain
+/// does not carry (DAT-018).
+const OVERSIZED_BLOCK_HEADER: u16 = 5;
+
+/// Declared output size of the chain that starts with a raw block: the raw
+/// block produces two bytes and the entry owes one more, so the walk reaches
+/// the second block.
+const CHAIN_AFTER_RAW_DECLARED: usize = 3;
+
+/// Position of the second block's frame header within the chain: the raw
+/// block's four bytes on disk (DAT-018).
+const CHAIN_SECOND_BLOCK_CURSOR: usize = RAW_BLOCK_FRAME_BYTES;
+
+/// `synthetic_chain_after_raw`: total tree length, after one twenty six byte
+/// record. The chain's stored bytes start there.
+const CHAIN_AFTER_RAW_TREE_BYTES: usize =
+    HEADER_WIDTH + NAME_WIDTH_DOT + HEADER_WIDTH + WIDTH_CHAIN_BIN;
+
+/// Declared output size of the cut pair stream: one byte, so the stream still
+/// owes output the truncated pair never produced (LZSS-015).
+const CUT_PAIR_STREAM_DECLARED: usize = 1;
+
+/// Position of the incomplete pair's first byte inside the LZSS stream: the
+/// control byte is byte zero, so the pair starts at byte one (LZSS-007).
+const CUT_PAIR_STREAM_POSITION: usize = 1;
+
+/// `synthetic_cut_pair_stream`: total tree length, after one twenty four byte
+/// record. The stream's input starts there.
+const CUT_PAIR_STREAM_TREE_BYTES: usize =
+    HEADER_WIDTH + NAME_WIDTH_DOT + HEADER_WIDTH + WIDTH_CUT_BIN;
+
 // --- the two LZSS block chain (DAT-019) ---------------------------------------
 
 /// Control byte `0x01` of block A: bit 0 is a literal and the seven bits above
@@ -364,42 +405,63 @@ const PAYLOAD_MODE_CASE_COUNT: usize = 7;
 
 // --- oracle 5: the error type's rendered message -------------------------------
 
-/// The nine variants of `DatError`, the quantity each one must report, and the
-/// name the variant is graded under.
+/// The nine variants of `DatError`, the quantity each one must report, the name
+/// the variant is graded under, and the exact text the spec fixes for it.
 ///
 /// `docs/spec/dat.md` DAT-030 fixes the variant set and what each variant
-/// means. It does not fix the wording of a single message: compare
-/// `docs/spec/exe-tables.md`, which prints the whole `Display` impl for
-/// `ExeError` inside the spec, so the EXE gate can assert exact text and this
-/// one cannot. So the assertion below is the CONTENT: the message is not
-/// empty, it names the offending quantity, and no two variants render the same
-/// message, because two variants that rendered the same text would not be
-/// naming what went wrong.
+/// means, and the *Error text* section of the same document fixes the wording
+/// of every message, the way `docs/spec/exe-tables.md` does for the executable
+/// layer. The expected strings below are read from that section, so they are
+/// the spec's words and not a copy of what the crate happens to print: the
+/// assertion below fails the moment the wording moves.
 ///
 /// The quantities are hand chosen and pairwise distinct, so a message that
 /// names the wrong number fails instead of passing on a coincidence. The
 /// variant with no quantity of its own is the one that reports an arithmetic
 /// failure rather than a place.
-const DAT_ERROR_CASES: [(&str, DatError, &[u64]); 9] = [
-    ("Truncated", DatError::Truncated { at: 41 }, &[41]),
+const DAT_ERROR_CASES: [(&str, DatError, &[u64], &str); 9] = [
+    (
+        "Truncated",
+        DatError::Truncated { at: 41 },
+        &[41],
+        "fo1-dat: the archive ran out at byte 41",
+    ),
     (
         "LengthOutOfRange",
         DatError::LengthOutOfRange { at: 42 },
         &[42],
+        "fo1-dat: a length field at byte 42 exceeded the bytes present",
     ),
-    ("OutOfBounds", DatError::OutOfBounds { at: 43 }, &[43]),
-    ("OffsetOverflow", DatError::OffsetOverflow, &[]),
+    (
+        "OutOfBounds",
+        DatError::OutOfBounds { at: 43 },
+        &[43],
+        "fo1-dat: a region at byte 43 ran outside the archive",
+    ),
+    (
+        "OffsetOverflow",
+        DatError::OffsetOverflow,
+        &[],
+        "fo1-dat: an offset plus a length overflowed",
+    ),
     (
         "UnknownPayloadMode",
         DatError::UnknownPayloadMode { flags: 0x5A },
         &[0x5A],
+        "fo1-dat: the flags word 0x5A names no known payload mode",
     ),
     (
         "OutputOverrun",
         DatError::OutputOverrun { declared: 44 },
         &[44],
+        "fo1-dat: the tokens would write past 44 declared bytes",
     ),
-    ("OutputShort", DatError::OutputShort { declared: 45 }, &[45]),
+    (
+        "OutputShort",
+        DatError::OutputShort { declared: 45 },
+        &[45],
+        "fo1-dat: the stream ended short of 45 declared bytes",
+    ),
     (
         "ConsumptionMismatch",
         DatError::ConsumptionMismatch {
@@ -407,8 +469,14 @@ const DAT_ERROR_CASES: [(&str, DatError, &[u64]); 9] = [
             actual: 47,
         },
         &[46, 47],
+        "fo1-dat: the payload consumed 47 byte(s) against 46 declared",
     ),
-    ("EmptyBlock", DatError::EmptyBlock { at: 48 }, &[48]),
+    (
+        "EmptyBlock",
+        DatError::EmptyBlock { at: 48 },
+        &[48],
+        "fo1-dat: the block header at byte 48 declares a zero length payload",
+    ),
 ];
 
 /// Number of rows in [`DAT_ERROR_CASES`], which is the number of variants the
@@ -452,6 +520,7 @@ const WIDTH_SHORT_BIN: usize = record_width("SHORT.BIN");
 const WIDTH_EXACT_BN: usize = record_width("EXACT.BN");
 const WIDTH_LONG_BN: usize = record_width("LONG.BN");
 const WIDTH_ODD_BIN: usize = record_width("ODD.BIN");
+const WIDTH_CUT_BIN: usize = record_width("CUT.BIN");
 
 /// Widths of the directory names the fixtures use.
 const NAME_WIDTH_DOT: usize = name_width(".");
@@ -760,6 +829,44 @@ const TRUNCATED_TREE_BYTES: usize = ROOT_FIELD_2_OFFSET + 2;
 /// ten byte fixture stops two bytes into it, so the read that fails is the four
 /// byte read that starts at byte 8 (DAT-030).
 const TRUNCATED_AT: u64 = 8;
+
+/// Byte offset of the root header's field 3, the fourth u32. Three fields of
+/// four bytes each come before it (DAT-001).
+const ROOT_FIELD_3_OFFSET: usize = 3 * ROOT_FIELD_0_WIDTH;
+
+/// Length of the second truncated fixture: the root header's fourth u32 starts
+/// at byte 12 and needs four bytes, so fifteen bytes leaves three of them.
+const TRUNCATED_FIELD3_TREE_BYTES: usize = ROOT_FIELD_3_OFFSET + 3;
+
+/// The byte position the second truncated fixture reports. The root header's
+/// fourth u32 starts at byte 12, so the read that fails is the four byte read
+/// that starts at byte 12 (DAT-030).
+const TRUNCATED_FIELD3_AT: u64 = 12;
+
+/// Byte offset of the first directory's name bytes: the root header is sixteen
+/// bytes and the name length byte is one more (DAT-001, DAT-003).
+const TRUNCATED_NAME_OFFSET: usize = HEADER_WIDTH + NAME_LENGTH_WIDTH;
+
+/// Length of the third truncated fixture: the root header, a name length byte
+/// that says two, and one byte of the name that follows it. The name field is
+/// missing its second byte.
+const TRUNCATED_NAME_TREE_BYTES: usize = TRUNCATED_NAME_OFFSET + 1;
+
+/// The byte position the third truncated fixture reports. The name field starts
+/// at byte 17 and the archive stops one byte into it, so the region that ran
+/// out starts at 17 and not at the 18 the reader noticed it at (DAT-030).
+const TRUNCATED_NAME_AT: u64 = 17;
+
+/// The name length byte of the third truncated fixture: it says two, and only
+/// one of the two bytes is in the archive.
+const TRUNCATED_NAME_LENGTH: u8 = 2;
+
+/// The one byte of the name that the third truncated fixture does carry.
+const TRUNCATED_NAME_BYTE: u8 = b'A';
+
+/// Root header field 0 of the third truncated fixture: one directory, so the
+/// reader reaches the name that is cut short.
+const TRUNCATED_NAME_DIRECTORIES: u32 = 1;
 
 /// Root header field 0 that no fixture can satisfy: more directories than the
 /// archive has bytes for.
@@ -1148,6 +1255,49 @@ fn synthetic_single_lzss_chain(payload: &[u8], declared: usize) -> Vec<u8> {
     );
     let blocks = [SyntheticBlock::new(ROOT_DIRECTORY_NAME, &[entry])];
     synthetic_archive(&blocks, &[chain], SINGLE_BLOCK_CHAIN_TREE_BYTES)
+}
+
+/// One chain of a raw block followed by a framed block whose frame header the
+/// caller supplies and whose payload the chain does not carry.
+///
+/// The raw block is four bytes on disk: a two byte frame header and its two
+/// payload bytes. So the second block's frame header starts at cursor four,
+/// and the second block is the one the walk reaches after the raw block's two
+/// bytes (DAT-018).
+fn synthetic_chain_after_raw(second_header: u16) -> Vec<u8> {
+    let mut chain = Vec::new();
+    push_u16(&mut chain, RAW_BLOCK_HEADER);
+    chain.extend_from_slice(&RAW_BLOCK_PAYLOAD);
+    push_u16(&mut chain, second_header);
+    let entry = SyntheticEntry::chain(
+        "CHAIN.BIN",
+        CHAIN_AFTER_RAW_TREE_BYTES,
+        CHAIN_AFTER_RAW_DECLARED,
+        chain.len(),
+    );
+    let blocks = [SyntheticBlock::new(ROOT_DIRECTORY_NAME, &[entry])];
+    synthetic_archive(&blocks, &[chain], CHAIN_AFTER_RAW_TREE_BYTES)
+}
+
+/// One archive holding one whole LZSS stream whose input is
+/// [`LZSS_CUT_PAIR_PAYLOAD`], so the stream runs out in the middle of a back
+/// reference (LZSS-015).
+///
+/// The stream is mode `0x10`, so the codec reads the whole stored region and
+/// the position it reports is counted from the start of that region.
+fn synthetic_cut_pair_stream() -> Vec<u8> {
+    let entry = SyntheticEntry::stream(
+        "CUT.BIN",
+        CUT_PAIR_STREAM_TREE_BYTES,
+        CUT_PAIR_STREAM_DECLARED,
+        LZSS_CUT_PAIR_PAYLOAD.len(),
+    );
+    let blocks = [SyntheticBlock::new(ROOT_DIRECTORY_NAME, &[entry])];
+    synthetic_archive(
+        &blocks,
+        &[LZSS_CUT_PAIR_PAYLOAD.to_vec()],
+        CUT_PAIR_STREAM_TREE_BYTES,
+    )
 }
 
 // --- the synthetic archives ---------------------------------------------------
@@ -2942,7 +3092,13 @@ fn synthetic_a_zero_entry_block_and_a_zero_length_name_are_accepted() {
 }
 
 /// claim: DAT-030, DAT-001
-/// oracle: class 5 (hand computed vectors from the spec: the root header is four big endian u32, so its third field starts at byte 8 and a ten byte tree runs out there)
+/// oracle: class 5 (hand computed vectors from the spec: the root header is four big endian u32, so its third field starts at byte 8 and a ten byte tree runs out there, and an error carries the offset the failed field started at)
+///
+/// The name of this test carries the old wording, "the byte position it ran
+/// out at", and the trace map names it, so it stays. What the test pins is
+/// the rule the spec now states: the offset is where the failed operation
+/// **started**, and the offsets each variant carries are the ones the spec's
+/// *byte offset an error carries* section gives, not one rule for all of them.
 #[test]
 fn synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at() {
     // The good input twin. A complete synthetic archive goes through the same
@@ -2984,6 +3140,11 @@ fn synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at() {
     // the one that starts at byte 8. The error carries that position (DAT-030),
     // which is the whole claim: the refusal says where it ran out and not only
     // that it ran out.
+    //
+    // The rule the spec fixes is that the offset is the one the failed
+    // operation started at, so the error carries 8 and not the 10 the reader
+    // noticed it had run out at. The two readings are one byte apart for a
+    // field that is missing its second byte, which is the third refusal below.
     let error = match DatArchive::parse(&truncated, SYNTHETIC_ORIGIN) {
         Ok(_) => panic!("a ten byte tree must be refused"),
         Err(error) => error,
@@ -2992,6 +3153,159 @@ fn synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at() {
         error,
         DatError::Truncated { at: TRUNCATED_AT },
         "a ten byte tree runs out at byte 8, where the root header's third u32 starts"
+    );
+
+    // The second refusal, one field further on. The root header's fourth u32
+    // starts at byte 12 and a fifteen byte tree leaves three of its four bytes,
+    // so the read that fails is the one that starts at byte 12. The error
+    // carries 12 and not the 15 the reader noticed it at.
+    let truncated_field3 = [0u8; TRUNCATED_FIELD3_TREE_BYTES];
+    assert_eq!(
+        truncated_field3.len(),
+        15,
+        "hand computed truncation length"
+    );
+    let field3_error = match DatArchive::parse(&truncated_field3, SYNTHETIC_ORIGIN) {
+        Ok(_) => panic!("a fifteen byte tree must be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        field3_error,
+        DatError::Truncated {
+            at: TRUNCATED_FIELD3_AT
+        },
+        "a fifteen byte tree runs out at byte 12, where the root header's fourth u32 starts"
+    );
+
+    // The third refusal is the one the two readings are one byte apart on. A
+    // directory name says two bytes and only one of them is in the archive, so
+    // the name field is missing its second byte. The error carries 17, where
+    // the name field starts, and not the 18 the reader noticed it at.
+    let mut truncated_name = Vec::new();
+    push_u32(&mut truncated_name, TRUNCATED_NAME_DIRECTORIES);
+    push_u32(&mut truncated_name, 0);
+    push_u32(&mut truncated_name, 0);
+    push_u32(&mut truncated_name, 0);
+    truncated_name.push(TRUNCATED_NAME_LENGTH);
+    truncated_name.push(TRUNCATED_NAME_BYTE);
+    assert_eq!(
+        truncated_name.len(),
+        TRUNCATED_NAME_TREE_BYTES,
+        "hand computed truncation length"
+    );
+    let name_error = match DatArchive::parse(&truncated_name, SYNTHETIC_ORIGIN) {
+        Ok(_) => panic!("a tree with a half written directory name must be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        name_error,
+        DatError::LengthOutOfRange { at: TRUNCATED_NAME_AT },
+        "a name field that is missing its second byte reports the byte the field starts at, not the byte the reader noticed it at"
+    );
+
+    // The fourth refusal names a length byte rather than a name field. The error
+    // set is closed (DAT-030) and has no malformed-name variant, so a stored
+    // name that is not UTF-8 is reported as the unusable length it came from,
+    // and the offset it carries is that length byte's own offset.
+    let mut bad_name = synthetic_lookup();
+    bad_name[LOOKUP_ENTRY_NAME_LENGTH + 1] = NOT_UTF8_BYTE;
+    let bad_name_error = match DatArchive::parse(&bad_name, SYNTHETIC_ORIGIN) {
+        Ok(_) => panic!("a tree whose entry name is not UTF-8 must be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        bad_name_error,
+        DatError::LengthOutOfRange {
+            at: u64::from(to_u32(LOOKUP_ENTRY_NAME_LENGTH))
+        },
+        "a name that is not UTF-8 reports the length byte that asked for it"
+    );
+
+    // The fifth refusal is the LZSS path, and the only path that adds a base to
+    // a position instead of copying a field's first byte. A whole LZSS stream
+    // whose input runs out in the middle of a back reference reports the
+    // entry's payload base plus the codec's position inside the stream, and
+    // that position is the first byte of the incomplete pair (LZSS-007).
+    let cut_stream_bytes = synthetic_cut_pair_stream();
+    let cut_stream_archive = synthetic_parse(
+        &cut_stream_bytes,
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the cut pair stream",
+    );
+    let cut_stream_entry = cut_stream_archive
+        .entries()
+        .first()
+        .expect("one stream entry");
+    assert_eq!(
+        cut_stream_entry.offset,
+        to_u32(CUT_PAIR_STREAM_TREE_BYTES),
+        "the stream's input starts where the tree ends"
+    );
+    let cut_stream_error = decoded_error(
+        decode_entry(cut_stream_entry, &cut_stream_bytes),
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the cut pair stream",
+    );
+    assert_eq!(
+        cut_stream_error,
+        DatError::Truncated {
+            at: u64::from(to_u32(
+                CUT_PAIR_STREAM_TREE_BYTES + CUT_PAIR_STREAM_POSITION
+            ))
+        },
+        "an LZSS stream that runs out mid pair reports the payload base plus the pair's first byte"
+    );
+
+    // The sixth refusal names a framed block inside a chain, and the offset it
+    // carries is the block's header start: the chain's payload base plus the
+    // block's position within the chain (DAT-018).
+    let empty_block_bytes = synthetic_chain_after_raw(ZERO_PAYLOAD_BLOCK_HEADER);
+    let empty_block_archive = synthetic_parse(
+        &empty_block_bytes,
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the zero length frame",
+    );
+    let empty_block_entry = empty_block_archive
+        .entries()
+        .first()
+        .expect("one chain entry");
+    assert_eq!(
+        empty_block_entry.offset,
+        to_u32(CHAIN_AFTER_RAW_TREE_BYTES),
+        "the chain's stored bytes start where the tree ends"
+    );
+    let empty_block_error = decoded_error(
+        decode_entry(empty_block_entry, &empty_block_bytes),
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the zero length frame",
+    );
+    assert_eq!(
+        empty_block_error,
+        DatError::EmptyBlock {
+            at: u64::from(to_u32(
+                CHAIN_AFTER_RAW_TREE_BYTES + CHAIN_SECOND_BLOCK_CURSOR
+            ))
+        },
+        "a zero length frame reports the start of the block header that declares it"
+    );
+
+    // The seventh refusal is the same block with a payload the chain does not
+    // carry, and it names the same place: the block's header start.
+    let oversized_bytes = synthetic_chain_after_raw(OVERSIZED_BLOCK_HEADER);
+    let oversized_archive = synthetic_parse(
+        &oversized_bytes,
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the oversized frame",
+    );
+    let oversized_entry = oversized_archive
+        .entries()
+        .first()
+        .expect("one chain entry");
+    let oversized_error = decoded_error(
+        decode_entry(oversized_entry, &oversized_bytes),
+        "synthetic_a_truncated_tree_reports_the_byte_position_it_ran_out_at: the oversized frame",
+    );
+    assert_eq!(
+        oversized_error,
+        DatError::OutOfBounds {
+            at: u64::from(to_u32(CHAIN_AFTER_RAW_TREE_BYTES + CHAIN_SECOND_BLOCK_CURSOR))
+        },
+        "a frame whose payload runs past the chain reports the start of the block header that declares it"
     );
 }
 
@@ -3040,7 +3354,7 @@ fn synthetic_the_archive_reports_the_label_it_was_parsed_under() {
 }
 
 /// claim: DAT-030, DAT-024
-/// oracle: class 5 (hand computed vectors from the spec: every error variant names the quantity it is about)
+/// oracle: class 5 (hand computed vectors from the spec: every error variant names the quantity it is about, and the *Error text* section of `docs/spec/dat.md` fixes the wording of every message word for word)
 #[test]
 fn synthetic_every_error_variant_names_what_went_wrong() {
     assert_eq!(
@@ -3050,7 +3364,7 @@ fn synthetic_every_error_variant_names_what_went_wrong() {
     );
 
     let mut rendered: Vec<String> = Vec::new();
-    for (name, error, quantities) in DAT_ERROR_CASES {
+    for (name, error, quantities, expected) in DAT_ERROR_CASES {
         let text = error.to_string();
         assert_eq!(
             dat_error_name(&error),
@@ -3064,6 +3378,14 @@ fn synthetic_every_error_variant_names_what_went_wrong() {
                 "{name}: the message must name {quantity}"
             );
         }
+        // The spec fixes the wording of every message, so the message is
+        // asserted in full and not only for the quantity it names. This is what
+        // makes the assertion able to fail: a message that names the right
+        // number in the wrong words is still a message the spec does not fix.
+        assert_eq!(
+            text, *expected,
+            "{name}: the message is the spec's, word for word"
+        );
         rendered.push(text);
     }
     assert_eq!(

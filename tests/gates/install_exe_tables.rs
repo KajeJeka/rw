@@ -474,6 +474,13 @@ const STAT_LIMIT_FIELD0: i32 = 0;
 /// Field 1 in all 38 stat limit records (EXETBL-C924).
 const STAT_LIMIT_FIELD1: i32 = 0;
 
+/// Field 2 in all five player stat limit records (EXETBL-008). Read from the
+/// reference executable at file offset `0xE9058`, where each record's field 2
+/// is the four bytes at its own offset 8. It is zero in all five, so it cannot
+/// be a per record index there: one reading cannot name the level, the
+/// experience, the reputation and the karma at once.
+const PLAYER_STAT_LIMIT_FIELD2: i32 = 0;
+
 /// Minimum of the first seven records, the seven core attributes (EXETBL-C922
 /// and C705).
 const STAT_LIMIT_CORE_MINIMUM: i32 = 1;
@@ -1547,7 +1554,7 @@ fn install_player_stat_limits_end_where_the_xp_table_begins() {
     );
 }
 
-/// claim: EXETBL-013
+/// claim: EXETBL-013, END-001, END-006, END-008, END-015
 /// oracle: class 1 (bytes of the original executable)
 #[test]
 #[ignore = "needs FO1_DATA: the reference install's falloutw.exe"]
@@ -1618,7 +1625,7 @@ fn install_xp_for_level_one_is_one_while_the_same_four_bytes_fold_big_endian_to_
     );
 }
 
-/// claim: EXETBL-009, EXETBL-015
+/// claim: EXETBL-009, EXETBL-015, END-005, END-007
 /// oracle: class 1 (bytes of the original executable)
 #[test]
 #[ignore = "needs FO1_DATA: the reference install's falloutw.exe"]
@@ -2025,8 +2032,8 @@ fn install_player_stat_limits_are_five_records_with_the_documented_ranges() {
         "EXETBL-008: and so is karma, which is the last of the five records"
     );
 
-    // Fields 0 and 1 are zero in all five records, exactly as in the stat limits
-    // table above them.
+    // Fields 0, 1 and 2 are zero in all five records, exactly as fields 0 and 1
+    // are in the stat limits table above them.
     let mut zero_fields = 0usize;
     for record in player.iter() {
         assert_eq!(
@@ -2038,6 +2045,12 @@ fn install_player_stat_limits_are_five_records_with_the_documented_ranges() {
             record.field1(),
             STAT_LIMIT_FIELD1,
             "EXETBL-008: and so is field 1"
+        );
+        assert_eq!(
+            record.field2(),
+            PLAYER_STAT_LIMIT_FIELD2,
+            "EXETBL-008: and field 2 is zero in all five player records, so it \
+             cannot be a per record index there"
         );
         zero_fields += 1;
     }
@@ -2504,7 +2517,7 @@ fn install_player_critical_first_and_last_records_carry_the_measured_bytes() {
     );
 }
 
-/// claim: EXETBL-002
+/// claim: EXETBL-002, END-004
 /// oracle: class 1 (bytes of the original executable)
 #[test]
 #[ignore = "needs FO1_DATA: the reference install's falloutw.exe"]

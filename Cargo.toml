@@ -116,3 +116,7 @@ path = "tests/gates/install_plaintext.rs"
 [[test]]
 name = "install_exe_tables"
 path = "tests/gates/install_exe_tables.rs"
+
+[[test]]
+name = "install_holdout"
+path = "tests/gates/install_holdout.rs"

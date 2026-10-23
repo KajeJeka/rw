@@ -7,8 +7,29 @@
 # point that counts as a full gate. This workflow deliberately has no step that sets
 # FO1_DATA, no step that runs `cargo test -- --ignored`, no step that downloads an
 # archive, and no step that reaches any network endpoint beyond the runner's own
-# toolchain provisioning. Every test executed here builds its own synthetic input in
+# toolchain provisioning and the crates.io download of the one cargo subcommand the
+# gate itself expects. Every test executed here builds its own synthetic input in
 # code.
+#
+# WHAT THIS WORKFLOW RUNS
+#
+# tools/gate.sh has ten steps. This workflow runs six of them, in the gate's own
+# order, with the gate's own commands. Five of them it runs one command at a time,
+# calling the repository's own scripts; it does not reimplement a check. The sixth
+# is the gate's step 8, "fail before, pass after", which only the gate can compute
+# (it builds the base tree and runs the changed tests there), so this workflow runs
+# the gate and reads the verdict the gate wrote for it.
+#
+# The gate's step 3 also cross-checks the dev-only band that tools/check_layers.sh
+# reports against the one tools/gate.sh reads from tools/layers.txt. That comparison
+# lives inside tools/gate.sh, so the gate's own step 3 runs here too, and this
+# workflow judges its verdict.
+#
+# The step below prints the whole table: the six steps this workflow runs and the
+# four it does not, with the reason for each one it does not run. A reader of this
+# log must be able to tell that the install steps are skipped because CI holds no
+# game data, and that the mutation step is skipped because it is slow. The last
+# step prints the outcome of every step that ran.
 
 name: ci
 
@@ -38,7 +59,10 @@ jobs:
     # not reliably preserve it. Contributors running the same scripts on Windows
     # need Git for Windows' bundled bash; they are not on PATH by default.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # The steps below take a few minutes. The ceiling leaves room for the cargo
+    # subcommand install, which compiles from source, for the gate's step 8 (a
+    # second release build, of the base tree), and for a slow runner.
+    timeout-minutes: 75
 
     steps:
       # Pinned by tag rather than by commit SHA. A SHA pin is the stronger form and
@@ -46,6 +70,13 @@ jobs:
       # one copied from memory. Left as an open item for the owner.
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          # The whole history. The gate's step 8 needs a base commit to build the
+          # "before" tree, and actions/checkout fetches one commit by default, so
+          # the base ref would not resolve and the step would be a required skip.
+          # A required skip is a FAIL, so without this the whole workflow would be
+          # red for a reason that has nothing to do with the code.
+          fetch-depth: 0
 
       - name: Install the pinned toolchain
         # Pinned to an exact version, not to `stable`. The project's rust-version is
@@ -55,33 +86,349 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal --no-self-update
           rustup default 1.96.0
 
-      - name: Formatting
-        run: cargo fmt --all --check
+      - name: Install cargo-deny
+        # The gate's step 3 runs `cargo deny check` and treats a missing cargo-deny
+        # as a skipped step, which the gate counts as a failure. The version is
+        # the one the repository names, pinned so that CI proves what the gate
+        # proves and not what a newer release happens to report.
+        run: cargo install cargo-deny --version 0.20.2 --locked
 
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Documentation
-        run: cargo doc --workspace --no-deps
-        env:
-          RUSTDOCFLAGS: -D warnings
+      - name: Which gate steps this workflow runs, and which it does not
+        run: |
+          cat <<'EOF'
+          === the gate has ten steps; this workflow runs six of them ===
+          #
+          # The five below need no game data and no private term list. They run in
+          # the gate's own order, with the gate's own commands, and each one calls
+          # the repository's own script.
+          #
+          #   step 2  public hygiene
+          #       bash tools/check_public.sh
+          #   step 3  formatting, lints, layering
+          #       cargo fmt --all -- --check
+          #       cargo clippy --workspace --all-targets -- -D warnings
+          #       RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps
+          #       bash tools/check_layers.sh
+          #       bash tools/lint_rules.sh
+          #       bash tools/lint_tests.sh
+          #       cargo deny check
+          #   step 4  workspace tests
+          #       cargo test --workspace --release
+          #   step 7  count check
+          #       bash tools/check_counts.sh
+          #   step 9  traceability
+          #       bash tools/check_trace.sh
+          #
+          # The sixth is run through the gate itself, because only the gate can
+          # compute it:
+          #
+          #   step 8  fail before, pass after
+          #       bash tools/gate.sh <base ref>
+          #       the verdict is the row the gate wrote for step 8
+          #
+          # The gate's step 3 also compares the dev-only band that
+          # tools/check_layers.sh reports with the one tools/gate.sh reads from
+          # tools/layers.txt. That comparison lives inside tools/gate.sh, so the
+          # gate's step 3 runs here as well and its verdict is judged.
+          #
+          # === the four steps this workflow does NOT run ===
+          #
+          #   step 1  protected paths
+          #       It compares the protected paths against a base ref, and its
+          #       verdict is the owner's approval of a change to one of them.
+          #       The approval is CODEOWNERS' job and not a measurement CI can
+          #       make. In this repository the owner owns every protected path,
+          #       so this check would be red for every legitimate change,
+          #       including this workflow. tools/gate.sh runs it before a push,
+          #       against origin/main.
+          #
+          #   step 5  install fingerprint
+          #       It reads the player's own copy of the game through FO1_DATA.
+          #       CI holds no game data and may never fetch any: a fingerprint of
+          #       nothing is not a check.
+          #
+          #   step 6  ignored tests
+          #       It runs the #[ignore]d tests against the install that step 5
+          #       verifies. CI has no install, so there is nothing to test.
+          #
+          #   step 10  mutation testing
+          #       It costs the measured 37 minutes for the fast scope, about an
+          #       hour by the gate's own per-mutant figure, so it does not
+          #       belong in the per-push gate. .github/workflows/mutation.yml
+          #       runs it weekly, on the synthetic scope, and reports the
+          #       counts and every survivor.
+          EOF
 
       # Both scripts read the owner's private term list and the Community Edition
       # identifier list from the environment when they are present. Neither exists
       # here and neither may be fetched, so both are declared empty. A script must
       # degrade to a narrower scan in that case, not fail.
-      - name: Public hygiene
+      - name: "gate step 2: public hygiene"
+        id: step2
         run: bash tools/check_public.sh
         env:
           FO1_PRIVATE_TERMS: ""
           FO1_REF: ""
 
-      - name: Layering
+      - name: "gate step 3a: formatting"
+        id: step3a
+        run: cargo fmt --all -- --check
+
+      - name: "gate step 3b: clippy"
+        id: step3b
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: "gate step 3c: documentation"
+        id: step3c
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      - name: "gate step 3d: layering"
+        id: step3d
         run: bash tools/check_layers.sh
         env:
           FO1_REF: ""
 
+      - name: "gate step 3e: rule lints"
+        id: step3e
+        run: bash tools/lint_rules.sh
+
+      - name: "gate step 3f: test lints"
+        id: step3f
+        run: bash tools/lint_tests.sh
+
+      - name: "gate step 3g: dependency policy"
+        id: step3g
+        run: cargo deny check
+
       # SYNTHETIC ONLY. Never `--ignored` here: those tests read the player's
-      # install through FO1_DATA, and CI holds none.
-      - name: Tests
-        run: cargo test --workspace
+      # install through FO1_DATA, and CI holds none. The release profile is the
+      # one the gate uses, because it keeps the overflow checks on.
+      - name: "gate step 4: workspace tests"
+        id: step4
+        run: cargo test --workspace --release
+
+      - name: "gate step 7: count check"
+        id: step7
+        run: bash tools/check_counts.sh
+
+      - name: "gate step 9: traceability"
+        id: step9
+        run: bash tools/check_trace.sh
+
+      # The gate's step 8: "fail before, pass after".
+      #
+      # WHAT IT IS
+      #
+      # The unit of judgement is the TEST, not the file. Every added or changed
+      # test must FAIL on the base tree and PASS on the head. A test that already
+      # passes on the base proves nothing about the change, so it needs a
+      # recorded mutation kill or a written exemption. This is the repository's
+      # central anti-vacuity rule: the party that writes the code must never
+      # control the proof, and a pull request that adds a gate test which passes
+      # on the base must not go green.
+      #
+      # THE SCOPE THIS STEP JUDGES, AND WHAT IT EXCLUDES
+      #
+      # Judged: the added or changed tests of tests/gates/synthetic_*.rs, the
+      # four gate test files that build their own input in code. They need no
+      # game data, so every test in them is measurable here.
+      #
+      # Excluded: the added or changed tests of tests/gates/install_*.rs, the
+      # four gate test files that read the player's own copy of the game. Each
+      # of the four holds at least one #[ignore]d test, and the gate turns an
+      # ignored changed test with no FO1_DATA into a required skip for the WHOLE
+      # step. A required skip is a FAIL, so one changed ignored test would hide
+      # the synthetic verdict instead of reporting it. The install scope is
+      # measured by the owner's own gate, which holds the install (step 5) and
+      # runs the ignored tests against it (step 6).
+      #
+      # One test of the install files needs no install at all: the digest-first
+      # refusal of two short buffers in install_exe_tables.rs. It is excluded
+      # here too, because the gate decides per file and not per test: a change
+      # to any other test of that file would turn the whole step into a
+      # required skip. The owner's gate judges it together with the rest of the
+      # file.
+      #
+      # HOW THE SCOPE IS CHOSEN
+      #
+      # The gate's step 8 takes the base ref as its only argument and reads the
+      # changed files as `git diff --name-only <base>...HEAD -- tests/gates/`.
+      # So the scope is chosen by the base ref the step is given. This step
+      # gives it one that holds the head's copy of the install gate test files:
+      # the install files are then identical on both sides of the diff, they are
+      # not in the changed set, and the step judges the synthetic scope alone.
+      #
+      # The base that ref is built from is the merge base of the pull request
+      # and its base branch, or of the commit a push replaced: the code the
+      # pull request's tests have to fail on. The gate's own base worktree is
+      # the base ref's tip, so the base here is the merge base rather than the
+      # tip. For a pull request that is up to date with its base branch the two
+      # are the same commit, and for a stale one the merge base is the stricter
+      # and the more stable choice.
+      #
+      # The head the gate judges is a synthetic commit whose tree is the real
+      # head's tree, so the head run measures exactly the code the pull request
+      # proposes. The gate's report therefore names that synthetic commit, and
+      # this step prints the real head next to it.
+      - name: "gate step 8: fail before, pass after"
+        id: step8
+        env:
+          # The commit the change is measured against: a pull request against
+          # its base branch, a push against the commit it replaced.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FO1_PRIVATE_TERMS: ""
+          FO1_REF: ""
+        run: |
+          set -euo pipefail
+
+          REAL_HEAD=$(git rev-parse HEAD)
+          BASE_SHA="${BASE_SHA:-}"
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            # A branch's first push names no commit to measure against. The
+            # default branch's tip is the closest thing CI holds.
+            if ! BASE_SHA=$(git rev-parse origin/main); then
+              printf 'FAIL no base commit was given and origin/main does not resolve\n'
+              exit 1
+            fi
+          fi
+          if ! git rev-parse --verify --quiet "$BASE_SHA" >/dev/null; then
+            printf 'FAIL the base commit %s does not resolve\n' "$BASE_SHA"
+            exit 1
+          fi
+          if ! BASE=$(git merge-base "$BASE_SHA" "$REAL_HEAD"); then
+            printf 'FAIL %s and %s have no common ancestor\n' "$BASE_SHA" "$REAL_HEAD"
+            exit 1
+          fi
+          if [ -z "$BASE" ]; then
+            printf 'FAIL %s and %s have no common ancestor\n' "$BASE_SHA" "$REAL_HEAD"
+            exit 1
+          fi
+          printf 'the base the change is measured against: %s\n' "$BASE"
+          printf 'the head the change is measured against: %s\n' "$REAL_HEAD"
+
+          # The synthetic base: the base's tree with the head's copy of the
+          # install gate test files. The base ref is an argument to the gate,
+          # and this is how the scope is set through it.
+          export GIT_AUTHOR_NAME=ci GIT_AUTHOR_EMAIL=ci@localhost
+          export GIT_COMMITTER_NAME=ci GIT_COMMITTER_EMAIL=ci@localhost
+          git read-tree "$BASE^{tree}"
+          git ls-tree -r "$REAL_HEAD" -- tests/gates/ | while read -r mode type blob path; do
+            case "$path" in
+              tests/gates/install_*) git update-index --add --cacheinfo "$mode,$blob,$path" ;;
+            esac
+          done
+          git ls-tree -r "$BASE" -- tests/gates/ | while read -r mode type blob path; do
+            case "$path" in
+              tests/gates/install_*)
+                git cat-file -e "$REAL_HEAD:$path" 2>/dev/null || git update-index --force-remove "$path"
+                ;;
+            esac
+          done
+          SYNTH_BASE=$(git commit-tree "$(git write-tree)" -p "$BASE" \
+            -m "ci: the base, with the head's install gate test files")
+          SYNTH_HEAD=$(git commit-tree "$REAL_HEAD^{tree}" -p "$SYNTH_BASE" \
+            -m "ci: the head, on the synthetic base (the real head is $REAL_HEAD)")
+          git reset --hard "$SYNTH_HEAD"
+
+          # The gate runs EVERY step and reports EVERY verdict, so its exit
+          # status is not the verdict this step judges: steps 5, 6 and 10 cannot
+          # run here, and a skipped required step is a FAIL for the gate. The
+          # rows this step judges are read from the report the gate wrote.
+          #
+          # The log goes under target/, which .gitignore excludes. The gate
+          # refuses to run on a dirty tree, and a log file in the repository
+          # root is an untracked file, which is a dirty tree.
+          mkdir -p target
+          set +e
+          bash tools/gate.sh "$SYNTH_BASE" >target/gate-step8.log 2>&1
+          status=$?
+          set -e
+          printf 'gate.sh exit status: %s\n' "$status"
+          printf 'the gate counts the install steps and the mutation step as skipped, which\n'
+          printf 'is a FAIL for the gate and not for this step; the rows below decide\n'
+          printf 'the gate also reports the owner approval step (1) as a failure when the\n'
+          printf 'change touches a protected path, and this step does not judge it\n'
+          git reset --hard "$REAL_HEAD"
+
+          REPORT='target/gate/report.md'
+          if [ ! -f "$REPORT" ]; then
+            printf 'FAIL the gate wrote no report, so nothing was measured\n'
+            tail -40 target/gate-step8.log
+            exit 1
+          fi
+          printf '\n=== the gate report ===\n'
+          grep -E '^\| [0-9]+ \|' "$REPORT" || true
+
+          # judge <step name> <what the step proves>
+          judge() {
+            local name="$1" why="$2" row outcome
+            row=$(grep -F "| $name |" "$REPORT" | head -1 || true)
+            if [ -z "$row" ]; then
+              printf 'FAIL the gate recorded no verdict for %s\n' "$name"
+              return 1
+            fi
+            outcome=$(printf '%s\n' "$row" |
+              awk -F'|' '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4 }')
+            if [ "$outcome" != pass ]; then
+              printf 'FAIL %s\n' "$why"
+              printf '     %s\n' "$row"
+              return 1
+            fi
+            printf 'the gate step passed: %s\n' "$row"
+            return 0
+          }
+
+          verdict=0
+          # Step 3 is judged for the dev-only band cross-check it carries: the
+          # gate reads the band out of tools/layers.txt and compares it with the
+          # one tools/check_layers.sh reports, and CI runs the layer script but
+          # not that comparison.
+          judge '3 formatting, lints, layering' \
+            'the gate step 3 did not pass, so the dev-only band was not cross-checked' || verdict=1
+          # Step 8 is the reason this step exists: a changed test that passes
+          # on the base proves nothing, and the gate is what measures it.
+          judge '8 fail before, pass after' \
+            'the gate step 8 did not pass, so a changed test was not proved' || verdict=1
+          exit "$verdict"
+
+      - name: The gate steps this workflow ran, and the ones it did not
+        # Always, so a reader of a red run still sees what was not checked.
+        if: always()
+        run: |
+          cat <<'EOF'
+          === gate steps this workflow did not run ===
+          #
+          #   step 1  protected paths      the owner's approval of a change to a
+          #                                  protected path; tools/gate.sh runs it
+          #                                  against origin/main before a push
+          #   step 5  install fingerprint  it reads the player's copy of the game
+          #                                  through FO1_DATA, and CI holds none
+          #   step 6  ignored tests        it tests against the install that
+          #                                  step 5 verifies, and CI has none
+          #   step 10 mutation testing    it costs the measured 37 minutes for the
+          #                                  fast scope, about an hour by the gate's
+          #                                  own per-mutant figure; the weekly
+          #                                  workflow .github/workflows/mutation.yml
+          #                                  runs it on the synthetic scope
+          #
+          # The install scope of step 8 is measured by the owner's own gate, which
+          # holds the install. CI measures the synthetic scope of step 8, and the
+          # step that ran it says exactly which files that is.
+          EOF
+          {
+            printf '\n=== the gate steps this workflow ran ===\n'
+            printf 'step 2  public hygiene              %s\n' "${{ steps.step2.outcome }}"
+            printf 'step 3a formatting                 %s\n' "${{ steps.step3a.outcome }}"
+            printf 'step 3b clippy                     %s\n' "${{ steps.step3b.outcome }}"
+            printf 'step 3c documentation              %s\n' "${{ steps.step3c.outcome }}"
+            printf 'step 3d layering                   %s\n' "${{ steps.step3d.outcome }}"
+            printf 'step 3e rule lints                 %s\n' "${{ steps.step3e.outcome }}"
+            printf 'step 3f test lints                 %s\n' "${{ steps.step3f.outcome }}"
+            printf 'step 3g dependency policy          %s\n' "${{ steps.step3g.outcome }}"
+            printf 'step 4  workspace tests             %s\n' "${{ steps.step4.outcome }}"
+            printf 'step 7  count check                 %s\n' "${{ steps.step7.outcome }}"
+            printf 'step 9  traceability                %s\n' "${{ steps.step9.outcome }}"
+            printf 'step 8  fail before, pass after     %s\n' "${{ steps.step8.outcome }}"
+          }
